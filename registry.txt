@@ -1,0 +1,13 @@
+2023-10-11 22:15:11,756 INFO :: Binance Futures Client successfully initialized
+Currency USDT balance :$1100.63366205
+Currency USDT balance margin_balance:$1100.63366205
+Currency USDT balance initial_margin:$0.0
+2023-10-13 13:58:13,555 INFO :: Binance Futures Client successfully initialized
+Currency USDT balance :$951.85641116
+Currency USDT balance margin_balance:$951.85641116
+Currency USDT balance initial_margin:$0.0
+
+2023-10-17 15:57:42,739 INFO :: Binance Futures Client successfully initialized
+Currency USDT balance :$669.02559526
+Currency USDT balance margin_balance:$669.02674698
+Currency USDT balance initial_margin:$0.01060855
