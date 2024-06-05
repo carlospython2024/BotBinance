@@ -1,6 +1,5 @@
 .idea/
 __pycache__/
 database.db
-database.py
 info.log
 main.py
