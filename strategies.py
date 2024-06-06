@@ -1628,6 +1628,13 @@ class BreakoutStrategy(Strategy):
             #bien
             short14 = ("Support" != zone != "BrokeSupport" and slope_10_d > 0 and volume_descending and green_win and
                        vwap_asc and green and last_volume_signal == "sell" and adx_tendency == BULLISH)
+            
+            long15 = ((crosses_vwap_up or crosses_vwap_up_20) and "Resistance" != zone != "BrokeResistance" and
+                      slope_10_d > 0 and volume_ascending and green_win and vwap_desc and green and
+                      last_volume_signal == "sell" and volume_above_sma)
+            short15 = ((crosses_vwap_down or crosses_vwap_down_20) and "Support" != zone != "BrokeSupport" and
+                       slope_10_d < 0 and volume_descending and red_win and vwap_desc and red and
+                       last_volume_signal == "buy" and not volume_above_sma)
             # max_profit = max( max_limit, (last_candle_close + (last_candle_close - ema_200[-1])))
             self.take_profit_long = max_limit
             self.stop_loss_long = last_candle_close - ((self.take_profit_long - last_candle_close) * 0.85)
@@ -1869,6 +1876,27 @@ class BreakoutStrategy(Strategy):
                 toaster.set_audio(audio.LoopingAlarm, loop=False)
                 toaster.show()
                 return return_short
+            
+            elif long15:
+                logger.info("long15 " + buy_message)
+                toaster = Notification(app_id="New order on Binance Long15",
+                                       title=f"{self.contract.symbol} Long15",
+                                       msg=f"{sl_tp_long_message}",
+                                       duration=f"long",
+                                       icon=ICON_LONG)
+                toaster.set_audio(audio.LoopingAlarm, loop=False)
+                toaster.show()
+                # return return_long
+            elif short15:
+                logger.info("Short15 " + sell_message)
+                toaster = Notification(app_id="New order on Binance Short13",
+                                       title=f"{self.contract.symbol} Short13",
+                                       msg=f"{sl_tp_short_message}",
+                                       duration=f"long",
+                                       icon=ICON_SHORT)
+                toaster.set_audio(audio.LoopingAlarm, loop=False)
+                toaster.show()
+                # return return_short
 
             else:
                 return 0
