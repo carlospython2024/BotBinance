@@ -1620,7 +1620,7 @@ class BreakoutStrategy(Strategy):
 
             long13 = ("Resistance" != zone != "BrokeResistance" and slope_10_d > 0 and volume_ascending and green_win and
                       vwap_desc and green and last_volume_signal == "sell" and volume_above_sma)
-            short13 = ("Support" != zone != "BrokeSupport" and slope_10_d < 0 and volume_ascending and red_win and
+            short13 = ("Support" != zone != "BrokeSupport" and slope_10_d < 0 and volume_descending and red_win and
                       vwap_desc and red and last_volume_signal == "buy" and not volume_above_sma)
 
             long14 = ("Resistance" != zone != "BrokeResistance" and slope_10_d > 0 and volume_descending and green_win and
@@ -1890,8 +1890,8 @@ class BreakoutStrategy(Strategy):
                 if not self.ongoing_position:
                     signal_result = self._check_signal()
                     # if True:
-                    #if not self.on_new_york_session() or self.today_is_sunday():
-                     #   signal_result = 0
+                    if not self.on_new_york_session() or self.today_is_sunday():
+                       signal_result = 0
                     if signal_result in [1, -1]:
                         self._open_position(signal_result)
                 else:
