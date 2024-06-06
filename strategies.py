@@ -1619,20 +1619,19 @@ class BreakoutStrategy(Strategy):
                        vwap_desc and red and last_volume_signal == "sell" and candle_type == BEARISH and vwap_desc_20)
 
             long13 = ("Resistance" != zone != "BrokeResistance" and slope_10_d > 0 and volume_ascending and green_win and
-                      vwap_desc and green and last_volume_signal == "sell" and volume_above_sma and candle_type == BEARISH)
+                      vwap_desc and green and last_volume_signal == "sell" and volume_above_sma and candle_type == BULLISH)
             short13 = ("Support" != zone != "BrokeSupport" and slope_10_d < 0 and volume_descending and red_win and
-                      vwap_desc and red and last_volume_signal == "buy" and not volume_above_sma and candle_type == BULLISH)
+                      vwap_desc and red and last_volume_signal == "buy" and not volume_above_sma and candle_type == BEARISH)
 
             long14 = ("Resistance" != zone != "BrokeResistance" and slope_10_d < 0 and volume_ascending and red_win and
                        vwap_desc and red and last_volume_signal == "buy" and adx_tendency == BEARISH)
-            #bien
             short14 = ("Support" != zone != "BrokeSupport" and slope_10_d > 0 and volume_descending and green_win and
                        vwap_asc and green and last_volume_signal == "sell" and adx_tendency == BULLISH)
             
-            long15 = ((crosses_vwap_up or crosses_vwap_up_20) and "Resistance" != zone != "BrokeResistance" and
+            long15 = ((crosses_vwap_down or crosses_vwap_down_20) and "Resistance" != zone != "BrokeResistance" and
                       slope_10_d > 0 and volume_ascending and green_win and vwap_desc and green and
                       last_volume_signal == "sell" and volume_above_sma)
-            short15 = ((crosses_vwap_down or crosses_vwap_down_20) and "Support" != zone != "BrokeSupport" and
+            short15 = ((crosses_vwap_up or crosses_vwap_up_20) and "Support" != zone != "BrokeSupport" and
                        slope_10_d < 0 and volume_descending and red_win and vwap_desc and red and
                        last_volume_signal == "buy" and not volume_above_sma)
             # max_profit = max( max_limit, (last_candle_close + (last_candle_close - ema_200[-1])))
