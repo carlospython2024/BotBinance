@@ -1583,12 +1583,12 @@ class BreakoutStrategy(Strategy):
             long7 = (zone != "BrokeResistance" and vwap_value_20 < vwap_value < last_candle_close and green_win and
                      crosses_vwap_up and not crosses_vwap_up_20 and green and vwap_asc_20 and
                      last_volume_signal == "buy" and vwap_asc and
-                     slope_28_d > 0 < slope_10_d and volume_ascending)
+                     slope_28_d > 0 < slope_120_d and volume_ascending)
             #funciona mal
             short7 = (zone != "BrokeSupport" and vwap_value_20 > vwap_value > last_candle_close and red_win and
                       crosses_vwap_down and not crosses_vwap_down_20 and vwap_desc_20 and
                       last_volume_signal == "sell" and vwap_desc and
-                      slope_28 < 0 > slope_10_d and volume_descending)
+                      slope_28 < 0 > slope_120_d and volume_descending)
 
             long9 = (zone != "BrokeResistance" and vwap_value_20 < vwap_value < last_candle_close and
                      crosses_vwap_up and vwap_asc_20 and last_volume_signal == "buy"
@@ -1619,12 +1619,12 @@ class BreakoutStrategy(Strategy):
                        vwap_desc and red and last_volume_signal == "sell" and candle_type == BEARISH and vwap_desc_20)
 
             long13 = ("Resistance" != zone != "BrokeResistance" and slope_10_d > 0 and volume_ascending and green_win and
-                      vwap_desc and green and last_volume_signal == "sell" and volume_above_sma)
+                      vwap_desc and green and last_volume_signal == "sell" and volume_above_sma and candle_type == BEARISH)
             short13 = ("Support" != zone != "BrokeSupport" and slope_10_d < 0 and volume_descending and red_win and
-                      vwap_desc and red and last_volume_signal == "buy" and not volume_above_sma)
+                      vwap_desc and red and last_volume_signal == "buy" and not volume_above_sma and candle_type == BULLISH)
 
-            long14 = ("Resistance" != zone != "BrokeResistance" and slope_10_d > 0 and volume_descending and green_win and
-                       vwap_asc and green and last_volume_signal == "sell" and adx_tendency == BEARISH)
+            long14 = ("Resistance" != zone != "BrokeResistance" and slope_10_d < 0 and volume_ascending and red_win and
+                       vwap_desc and red and last_volume_signal == "buy" and adx_tendency == BEARISH)
             #bien
             short14 = ("Support" != zone != "BrokeSupport" and slope_10_d > 0 and volume_descending and green_win and
                        vwap_asc and green and last_volume_signal == "sell" and adx_tendency == BULLISH)
