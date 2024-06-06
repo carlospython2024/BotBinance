@@ -1837,7 +1837,7 @@ class BreakoutStrategy(Strategy):
                                        icon=ICON_LONG)
                 toaster.set_audio(audio.LoopingAlarm, loop=False)
                 toaster.show()
-                # return return_long
+                return return_long
             elif short13:
                 logger.info("Short13 " + sell_message)
                 toaster = Notification(app_id="New order on Binance Short13",
