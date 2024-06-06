@@ -1618,10 +1618,12 @@ class BreakoutStrategy(Strategy):
             short12 = ("Support" != zone != "BrokeSupport" and slope_10_d < 0 and volume_ascending and red_win and
                        vwap_desc and red and last_volume_signal == "sell" and candle_type == BEARISH and vwap_desc_20)
 
-            long13 = ("Resistance" != zone != "BrokeResistance" and slope_10_d > 0 and volume_ascending and green_win and
-                      vwap_asc and green and last_volume_signal == "buy" and volume_above_sma and candle_type == BULLISH)
+            long13 = ("Resistance" != zone != "BrokeResistance" and slope_10_d > 0 and volume_ascending and green_win
+                      and vwap_asc and green and volume_above_sma and candle_type == BULLISH and adx_tendency == BEARISH
+                      and not vwap_desc_20)
             short13 = ("Support" != zone != "BrokeSupport" and slope_10_d < 0 and volume_descending and red_win and
-                      vwap_desc and red and last_volume_signal == "sell" and not volume_above_sma and candle_type == BEARISH)
+                       vwap_desc and red and not volume_above_sma and candle_type == BEARISH and adx_tendency == BULLISH
+                       and not vwap_asc_20)
 
             long14 = ("Resistance" != zone != "BrokeResistance" and slope_10_d < 0 and volume_ascending and red_win and
                        vwap_desc and red and last_volume_signal == "buy" and adx_tendency == BEARISH)
