@@ -1364,7 +1364,7 @@ class Strategy:
             else:
                 red = red + 1
 
-        return green > red, red > green
+        return green > red, red > green, green, red
 
 
 class TechnicalStrategy(Strategy):
@@ -1535,7 +1535,7 @@ class BreakoutStrategy(Strategy):
             # vwap_asc, vwap_desc, vwap_value = self._vwap_reg(data, int(round(cumulative_period / 2, 0)))
             vwap_asc_20, vwap_desc_20, vwap_value_20 = self._vwap(data, 20)
 
-            green_win, red_win = self.green_vs_red(opens, closes)
+            green_win, red_win, green_count, red_count = self.green_vs_red(opens, closes)
 
             # Volume LSMA
             volume_length = 50 if self.tf == "1m" else 60
@@ -1607,10 +1607,10 @@ class BreakoutStrategy(Strategy):
                        and red and last_volume_signal == "sell" and slope_10_d < 0 and vwap_asc_20 and volume_ascending)
 
             #funciona mal
-            long11 = (slope_120_d > 0 < slope_28_d and "Resistance" != zone != "BrokeResistance" and green and green_win and crosses_vwap_up and
-                      last_volume_signal == "buy")
-            short11 = (slope_120_d < 0 > slope_28_d and "Support" != zone != "BrokeSupport" and red and red_win and crosses_vwap_down and
-                       last_volume_signal == "sell")
+            long11 = (slope_120_d > 0 < slope_28_d and "Resistance" != zone != "BrokeResistance" and green and green_win
+                      and crosses_vwap_up and last_volume_signal == "buy")
+            short11 = (slope_120_d < 0 > slope_28_d and "Support" != zone != "BrokeSupport" and red and red_win and
+                       crosses_vwap_down and last_volume_signal == "sell")
 
             # funciona bien
             long12 = ("Resistance" != zone != "BrokeResistance" and slope_10_d > 0 and volume_ascending and green_win and
@@ -1619,9 +1619,9 @@ class BreakoutStrategy(Strategy):
                        vwap_desc and red and last_volume_signal == "sell" and candle_type == BEARISH and vwap_desc_20)
 
             long13 = ("Resistance" != zone != "BrokeResistance" and slope_10_d > 0 and volume_ascending and green_win and
-                      vwap_desc and green and last_volume_signal == "sell" and volume_above_sma and candle_type == BULLISH)
+                      vwap_asc and green and last_volume_signal == "buy" and volume_above_sma and candle_type == BULLISH)
             short13 = ("Support" != zone != "BrokeSupport" and slope_10_d < 0 and volume_descending and red_win and
-                      vwap_desc and red and last_volume_signal == "buy" and not volume_above_sma and candle_type == BEARISH)
+                      vwap_desc and red and last_volume_signal == "sell" and not volume_above_sma and candle_type == BEARISH)
 
             long14 = ("Resistance" != zone != "BrokeResistance" and slope_10_d < 0 and volume_ascending and red_win and
                        vwap_desc and red and last_volume_signal == "buy" and adx_tendency == BEARISH)
@@ -1672,7 +1672,9 @@ class BreakoutStrategy(Strategy):
                            f"candle_type {candle_type} \n "
                            f"candle green {green} \n "
                            f"candle green wins {green_win} \n "
+                           f"candle green_count {green_count} \n "
                            f"candle red wins {red_win} \n "
+                           f"candle red_count {red_count} \n "
                            f"candle red {red} \n "
                            f"vwap period {cumulative_period} \n "
                            f"vwap period {cumulative_period} \n "
@@ -1843,7 +1845,7 @@ class BreakoutStrategy(Strategy):
                                        icon=ICON_LONG)
                 toaster.set_audio(audio.LoopingAlarm, loop=False)
                 toaster.show()
-                return return_long
+                # return return_long
             elif short13:
                 logger.info("Short13 " + sell_message)
                 toaster = Notification(app_id="New order on Binance Short13",
