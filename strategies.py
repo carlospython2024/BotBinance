@@ -1352,7 +1352,7 @@ class Strategy:
         return vwap_asc, vwap_desc, df['vwapValue'].values[-1]
 
     def green_vs_red(self, open_prices, close_prices):
-        lenght = 20
+        lenght = 15
 
         open_last_20 = open_prices[-lenght:]
         close_last_20 = close_prices[-lenght:]
@@ -1519,8 +1519,14 @@ class BreakoutStrategy(Strategy):
             high_arr = np.array(highs)
             volume_arr = np.array(volume)
             timestamp_arr = np.array(formatted_timestamps)
-            data = pd.DataFrame(
-                {'Open': open_arr, 'Close': close_arr, 'Low': low_arr, 'High': high_arr, 'Volume': volume_arr, 'date': timestamp_arr})
+            data = pd.DataFrame({
+                'Open': open_arr,
+                'Close': close_arr,
+                'Low': low_arr,
+                'High': high_arr,
+                'Volume': volume_arr,
+                'date': timestamp_arr
+            })
             zone, resistance_limit, support_limit, max_limit, min_limit = self.session_zones(data)
             cumulative_period = 0
             match self.tf:
@@ -1531,19 +1537,23 @@ class BreakoutStrategy(Strategy):
                 case "1h": cumulative_period = 30
                 case "4h": cumulative_period = 30
 
-            vwap_asc, vwap_desc, vwap_value = self._vwap(data, cumulative_period)
-            # vwap_asc, vwap_desc, vwap_value = self._vwap_reg(data, int(round(cumulative_period / 2, 0)))
-            vwap_asc_20, vwap_desc_20, vwap_value_20 = self._vwap(data, 20)
+            reg_period = int(round(cumulative_period / 2, 0))
+            _, _, vwap_value = self._vwap(data, cumulative_period)
+            vwap_asc, vwap_desc, _ = self._vwap_reg(data, cumulative_period, reg_period)
+            vwap_asc_20, vwap_desc_20, vwap_value_20 = self._vwap_reg(data, 11, 10)
 
             green_win, red_win, green_count, red_count = self.green_vs_red(opens, closes)
 
             # Volume LSMA
             volume_length = 50 if self.tf == "1m" else 60
             lsma_relative_volume = self.linear_reg_series(data['Volume'], volume_length, 0)
-            volume_above_sma = data['Volume'].iloc[-2] > lsma_relative_volume[-2]
+            volume_above_sma = data['Volume'].iloc[-3] > lsma_relative_volume[-3] > 0
 
-            volume_ascending = lsma_relative_volume[-3] < lsma_relative_volume[-2] < lsma_relative_volume[-1]
-            volume_descending = lsma_relative_volume[-1] < lsma_relative_volume[-2] < lsma_relative_volume[-3]
+            vol_sma_asc = lsma_relative_volume[-5] < lsma_relative_volume[-4] < lsma_relative_volume[-3]
+            vol_sma_desc = lsma_relative_volume[-3] < lsma_relative_volume[-4] < lsma_relative_volume[-5]
+
+            volume_asc = data['Volume'].iloc[-5] < data['Volume'].iloc[-4] < data['Volume'].iloc[-3]
+            volume_desc = data['Volume'].iloc[-3] < data['Volume'].iloc[-4] < data['Volume'].iloc[-5]
 
             candle_type = self.get_candle_type(opens[-2], highs[-2], lows[-2], closes[-2])
             previous_candle_type = self.get_candle_type(opens[-4], highs[-4], lows[-4], closes[-4])
@@ -1552,6 +1562,7 @@ class BreakoutStrategy(Strategy):
             # ema_21 = talib.EMA(close_arr, timeperiod=21)
             # ema_50 = talib.EMA(close_arr, timeperiod=50)
             # ema_200 = talib.EMA(close_arr, timeperiod=200)
+            _, slope_180_d, trend_180 = self.get_slope(close_arr, 180)
             slope_120, slope_120_d, trend_120 = self.get_slope(close_arr, 120)
             slope_28, slope_28_d, trend_28 = self.get_slope(close_arr, 28)
             slope_10, slope_10_d, trend_10 = self.get_slope(close_arr, 10)
@@ -1570,72 +1581,63 @@ class BreakoutStrategy(Strategy):
             green = opens[-2] < closes[-2]
             red = opens[-2] > closes[-2]
 
+            bull_condition = (zone != "BrokeResistance" and volume_asc and closes[-2] > vwap_value < opens[-2] and
+                              closes[-4] < vwap_value and vwap_asc_20 and volume_above_sma and green_win and
+                              candle_type == BULLISH)
+            sell_condition = (zone != "BrokeSupport" and volume_desc and closes[-2] < vwap_value > opens[-2] and
+                              closes[-4] > vwap_value and vwap_desc_20 and volume_above_sma and red_win and
+                              candle_type == BEARISH)
 
-            long6 = (zone != "BrokeResistance" and vwap_value_20 < vwap_value < last_candle_close and
-                     crosses_vwap_up and vwap_asc_20
-                     and volume_above_sma and green and slope_120_d > 0 < slope_28_d and
-                     vwap_desc and slope_120_d > 0 and volume_ascending)
-            short6 = (zone != "BrokeSupport" and vwap_value_20 > vwap_value > last_candle_close and
-                      crosses_vwap_down and vwap_desc_20
-                      and not volume_above_sma and red and slope_28 < 0 > slope_120_d and
-                      vwap_asc and slope_120_d < 0 and volume_ascending)
+            long6 = crosses_vwap_up and bull_condition
+            short6 = crosses_vwap_down and sell_condition
 
-            long7 = (zone != "BrokeResistance" and vwap_value_20 < vwap_value < last_candle_close and green_win and
-                     crosses_vwap_up and not crosses_vwap_up_20 and green and vwap_asc_20 and
-                     last_volume_signal == "buy" and vwap_asc and
-                     slope_28_d > 0 < slope_120_d and volume_ascending)
+            long7 = (zone != "BrokeResistance" and vwap_value_20 < vwap_value < last_candle_close and long6)
             #funciona mal
-            short7 = (zone != "BrokeSupport" and vwap_value_20 > vwap_value > last_candle_close and red_win and
-                      crosses_vwap_down and not crosses_vwap_down_20 and vwap_desc_20 and
-                      last_volume_signal == "sell" and vwap_desc and
-                      slope_28 < 0 > slope_120_d and volume_descending)
+            short7 = (zone != "BrokeSupport" and vwap_value_20 > vwap_value > last_candle_close and short6)
 
-            long9 = (zone != "BrokeResistance" and vwap_value_20 < vwap_value < last_candle_close and
-                     crosses_vwap_up and vwap_asc_20 and last_volume_signal == "buy"
-                     and volume_above_sma and green and green_win and
-                     candle_type == BULLISH and volume_ascending)
-            # funciona mal
-            short9 = (zone != "BrokeSupport" and vwap_value_20 > vwap_value > last_candle_close and
-                      crosses_vwap_down and vwap_desc_20 and last_volume_signal == "sell"
-                      and not volume_above_sma and red and red_win and
-                      candle_type == BEARISH and volume_descending)
-
-            # funciona mal
-            long10 = ("Resistance" != zone != "BrokeResistance" and last_candle_close > vwap_value_20 > vwap_value and crosses_vwap_up_20
-                      and green and last_volume_signal == "buy" and slope_10_d > 0 and vwap_desc_20 and volume_ascending)
-            short10 = ("Support" != zone != "BrokeSupport" and last_candle_close < vwap_value_20 < vwap_value and crosses_vwap_down_20
-                       and red and last_volume_signal == "sell" and slope_10_d < 0 and vwap_asc_20 and volume_ascending)
+            long9 = (zone != "BrokeResistance" and vwap_value_20 < vwap_value < last_candle_close and vwap_asc_20 and
+                     crosses_vwap_up and volume_above_sma and green and candle_type == BULLISH and
+                     slope_28_d > 0 < slope_180_d)
+            short9 = (zone != "BrokeSupport" and vwap_value_20 > vwap_value > last_candle_close and vwap_desc_20 and
+                      crosses_vwap_down and red and candle_type == BEARISH and slope_28_d < 0 > slope_180_d)
+            
+            long10 = volume_asc and trend_10 == STRONG_BULLISH == trend_28
+            short10 = volume_desc and trend_10 == STRONG_BEARISH == trend_28
 
             #funciona mal
-            long11 = (slope_120_d > 0 < slope_28_d and "Resistance" != zone != "BrokeResistance" and green and green_win
-                      and crosses_vwap_up and last_volume_signal == "buy")
-            short11 = (slope_120_d < 0 > slope_28_d and "Support" != zone != "BrokeSupport" and red and red_win and
-                       crosses_vwap_down and last_volume_signal == "sell")
+            long11 = (slope_180_d > 0 < slope_28_d and "Resistance" != zone != "BrokeResistance" and long6)
+            # muy bien
+            short11 = (slope_180_d < 0 > slope_28_d and "Support" != zone != "BrokeSupport" and short6)
 
             # funciona bien
-            long12 = ("Resistance" != zone != "BrokeResistance" and slope_10_d > 0 and volume_ascending and green_win and
-                      vwap_asc and green and last_volume_signal == "buy" and candle_type == BULLISH and vwap_asc_20)
-            short12 = ("Support" != zone != "BrokeSupport" and slope_10_d < 0 and volume_ascending and red_win and
-                       vwap_desc and red and last_volume_signal == "sell" and candle_type == BEARISH and vwap_desc_20)
+            long12 = ("Resistance" != zone != "BrokeResistance" and slope_10_d > 0 and volume_asc and green_win and
+                      vwap_asc and green and last_volume_signal == "buy" and candle_type == BULLISH and vwap_asc_20
+                      and slope_120_d > 0 and vwap_value_20 > vwap_value)
+            short12 = ("Support" != zone != "BrokeSupport" and slope_10_d < 0 and volume_asc and red_win and
+                       vwap_desc and red and last_volume_signal == "sell" and candle_type == BEARISH and vwap_desc_20
+                       and slope_120_d < 0 and vwap_value_20 < vwap_value)
 
-            long13 = ("Resistance" != zone != "BrokeResistance" and slope_10_d > 0 and volume_ascending and green_win
+            long13 = ("Resistance" != zone != "BrokeResistance" and slope_10_d > 0 and volume_asc and green_win
                       and vwap_asc and green and volume_above_sma and candle_type == BULLISH and adx_tendency == BEARISH
-                      and not vwap_desc_20)
-            short13 = ("Support" != zone != "BrokeSupport" and slope_10_d < 0 and volume_descending and red_win and
+                      and not vwap_desc_20 and last_volume_signal == "buy" and vwap_value_20 > vwap_value)
+            #2 bien 1 mal
+            short13 = ("Support" != zone != "BrokeSupport" and slope_10_d < 0 and volume_desc and red_win and
                        vwap_desc and red and not volume_above_sma and candle_type == BEARISH and adx_tendency == BULLISH
-                       and not vwap_asc_20)
+                       and not vwap_asc_20 and last_volume_signal == "sell" and vwap_value_20 < vwap_value)
 
-            long14 = ("Resistance" != zone != "BrokeResistance" and slope_10_d < 0 and volume_ascending and red_win and
-                       vwap_desc and red and last_volume_signal == "buy" and adx_tendency == BEARISH)
-            short14 = ("Support" != zone != "BrokeSupport" and slope_10_d > 0 and volume_descending and green_win and
-                       vwap_asc and green and last_volume_signal == "sell" and adx_tendency == BULLISH)
+            #bien
+            long14 = ("Resistance" != zone != "BrokeResistance" and slope_10_d > 0 < slope_28_d and volume_desc and
+                      green_win and vwap_asc and green and last_volume_signal == "buy" and adx_tendency == BULLISH and
+                      vwap_value_20 > vwap_value)
+            short14 = ("Support" != zone != "BrokeSupport" and slope_10_d < 0 > slope_28_d and vol_sma_asc and red_win and
+                       vwap_desc and red and last_volume_signal == "sell" and adx_tendency == BEARISH and
+                       vwap_value_20 < vwap_value)
             
-            long15 = ((crosses_vwap_down or crosses_vwap_down_20) and "Resistance" != zone != "BrokeResistance" and
-                      slope_10_d > 0 and volume_ascending and green_win and vwap_desc and green and
-                      last_volume_signal == "sell" and volume_above_sma)
-            short15 = ((crosses_vwap_up or crosses_vwap_up_20) and "Support" != zone != "BrokeSupport" and
-                       slope_10_d < 0 and volume_descending and red_win and vwap_desc and red and
-                       last_volume_signal == "buy" and not volume_above_sma)
+            long15 = ("Resistance" != zone != "BrokeResistance" and (crosses_vwap_down or crosses_vwap_down_20) and
+                      slope_10_d > 0 < slope_28_d and vwap_asc_20 and green and volume_above_sma and
+                      candle_type == BULLISH and green_win)
+            short15 = ("Support" != zone != "BrokeSupport" and (crosses_vwap_up or crosses_vwap_up_20) and
+                       slope_10_d < 0 > slope_28_d and vwap_desc_20 and red and candle_type == BEARISH and red_win)
             # max_profit = max( max_limit, (last_candle_close + (last_candle_close - ema_200[-1])))
             self.take_profit_long = max_limit
             self.stop_loss_long = last_candle_close - ((self.take_profit_long - last_candle_close) * 0.85)
@@ -1694,6 +1696,8 @@ class BreakoutStrategy(Strategy):
                            f"trend_28 {trend_28} \n "
                            f"slope_120 {slope_120_d} \n "
                            f"trend_120 {trend_120} \n "
+                           f"slope_180 {slope_180_d} \n "
+                           f"trend_180 {trend_180} \n "
                            f"timeframe {self.tf} \n "
                            f"vwap_value {vwap_value} \n "
                            f"vwap_asc_20 {vwap_asc_20} \n "
@@ -1701,8 +1705,8 @@ class BreakoutStrategy(Strategy):
                            f"vwap_asc {vwap_asc} \n "
                            f"vwap_desc {vwap_desc} \n "
                            f"volume_above_sma {volume_above_sma} \n "
-                           f"volume_ascending {volume_ascending} \n "
-                           f"volume_descending {volume_descending} \n "
+                           f"volume_ascending {vol_sma_asc} \n "
+                           f"volume_descending {vol_sma_desc} \n "
                            f"zone {zone} \n")
             sl_tp_long_message = f"self.stop_loss_long {self.stop_loss_long}\n take_profit_long {self.take_profit_long}"
             sl_tp_short_message = f"self.stop_loss_short {self.stop_loss_short}\n take_profit_short {self.take_profit_short}"
@@ -1742,7 +1746,7 @@ class BreakoutStrategy(Strategy):
                                        icon=ICON_LONG)
                 toaster.set_audio(audio.LoopingAlarm, loop=False)
                 toaster.show()
-                return return_long
+                # return return_long
             elif short7:
                 logger.info("Short7 " + sell_message)
                 toaster = Notification(app_id="New order on Binance Short7",
@@ -1752,10 +1756,10 @@ class BreakoutStrategy(Strategy):
                                        icon=ICON_SHORT)
                 toaster.set_audio(audio.LoopingAlarm, loop=False)
                 toaster.show()
-                return return_short
+                # return return_short
 
             elif long9:
-                logger.info("Long9 " + buy_message)
+                logger.info("long9 " + buy_message)
                 toaster = Notification(app_id="New order on Binance Long9",
                                        title=f"{self.contract.symbol} Long9",
                                        msg=f"{sl_tp_long_message}",
@@ -1763,7 +1767,7 @@ class BreakoutStrategy(Strategy):
                                        icon=ICON_LONG)
                 toaster.set_audio(audio.LoopingAlarm, loop=False)
                 toaster.show()
-                return return_long
+                # return return_long
             elif short9:
                 logger.info("Short9 " + sell_message)
                 toaster = Notification(app_id="New order on Binance Short9",
@@ -1774,9 +1778,9 @@ class BreakoutStrategy(Strategy):
                 toaster.set_audio(audio.LoopingAlarm, loop=False)
                 toaster.show()
                 # return return_short
-
+                
             elif long10:
-                logger.info("Long10 " + buy_message)
+                logger.info("long10 " + buy_message)
                 toaster = Notification(app_id="New order on Binance Long10",
                                        title=f"{self.contract.symbol} Long10",
                                        msg=f"{sl_tp_long_message}",
@@ -1795,7 +1799,7 @@ class BreakoutStrategy(Strategy):
                 toaster.set_audio(audio.LoopingAlarm, loop=False)
                 toaster.show()
                 # return return_short
-                
+
             elif long11:
                 logger.info("Long11 " + buy_message)
                 toaster = Notification(app_id="New order on Binance Long11",
@@ -1868,7 +1872,7 @@ class BreakoutStrategy(Strategy):
                                        icon=ICON_LONG)
                 toaster.set_audio(audio.LoopingAlarm, loop=False)
                 toaster.show()
-                # return return_long
+                return return_long
             elif short14:
                 logger.info("Short14 " + sell_message)
                 toaster = Notification(app_id="New order on Binance Short13",
@@ -1921,8 +1925,8 @@ class BreakoutStrategy(Strategy):
                 if not self.ongoing_position:
                     signal_result = self._check_signal()
                     # if True:
-                    if not self.on_new_york_session() or self.today_is_sunday():
-                       signal_result = 0
+                    # if not self.on_new_york_session() or self.today_is_sunday():
+                    #    signal_result = 0
                     if signal_result in [1, -1]:
                         self._open_position(signal_result)
                 else:
