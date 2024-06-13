@@ -1564,6 +1564,7 @@ class BreakoutStrategy(Strategy):
             # ema_21 = talib.EMA(close_arr, timeperiod=21)
             # ema_50 = talib.EMA(close_arr, timeperiod=50)
             # ema_200 = talib.EMA(close_arr, timeperiod=200)
+            _, slope_80_d, trend_80 = self.get_slope(close_arr, 80)
             _, slope_180_d, trend_180 = self.get_slope(close_arr, 180)
             slope_120, slope_120_d, trend_120 = self.get_slope(close_arr, 120)
             slope_28, slope_28_d, trend_28 = self.get_slope(close_arr, 28)
@@ -1603,11 +1604,12 @@ class BreakoutStrategy(Strategy):
             short9 = (zone != "BrokeSupport" and vwap_value_20 > vwap_value > last_candle_close and vwap_desc_20 and
                       crosses_vwap_down and red and candle_type == BEARISH and volume_desc and volume_desc and
                       vol_sma_desc)
-            
+
+            #funciona mal
             long10 = ("Resistance" != zone != "BrokeResistance" and volume_asc_last and red_win and
                       trend_10 == STRONG_BULLISH == trend_28 and vwap_value < last_candle_close and
-                      slope_28_d > 0 < slope_180_d and vol_sma_asc)
-            # ?-
+                      slope_28_d > 0 < slope_80_d and vol_sma_asc)
+            # funciona bien
             short10 = ("Support" != zone != "BrokeSupport" and volume_desc_last and green_win and
                        trend_10 == STRONG_BEARISH == trend_28 and vwap_value > last_candle_close and
                        slope_180_d < 0 > slope_28_d and vol_sma_desc)
@@ -1618,16 +1620,16 @@ class BreakoutStrategy(Strategy):
 
             # funciona bien
             long12 = ("Resistance" != zone != "BrokeResistance" and slope_10_d > 0 and volume_asc and green_win and
-                      vwap_asc and green and last_volume_signal == "buy" and candle_type == BULLISH and vwap_asc_20
-                      and slope_120_d > 0 and vwap_value_20 > vwap_value)
+                      vwap_asc and green and last_volume_signal == "buy" and candle_type == BULLISH
+                      and slope_120_d > 0 and vwap_value_20 > vwap_value and vol_sma_asc)
+            # funciona bien
             short12 = ("Support" != zone != "BrokeSupport" and slope_10_d < 0 and volume_asc and red_win and
-                       vwap_desc and red and last_volume_signal == "sell" and candle_type == BEARISH and vwap_desc_20
-                       and slope_120_d < 0 and vwap_value_20 < vwap_value)
+                       vwap_desc and red and last_volume_signal == "sell" and candle_type == BEARISH
+                       and slope_120_d < 0 and vwap_value_20 < vwap_value and vol_sma_desc)
 
             long13 = ("Resistance" != zone != "BrokeResistance" and slope_10_d > 0 and volume_asc and green_win
                       and vwap_asc and green and volume_above_sma and candle_type == BULLISH and adx_tendency == BEARISH
                       and not vwap_desc_20 and last_volume_signal == "buy" and vwap_value_20 > vwap_value)
-            #2 bien 1 mal
             short13 = ("Support" != zone != "BrokeSupport" and slope_10_d < 0 and volume_desc and red_win and
                        vwap_desc and red and not volume_above_sma and candle_type == BEARISH and adx_tendency == BULLISH
                        and not vwap_asc_20 and last_volume_signal == "sell" and vwap_value_20 < vwap_value)
@@ -1707,6 +1709,8 @@ class BreakoutStrategy(Strategy):
                            f"trend_10 {trend_10} \n "
                            f"slope_28 {slope_28_d} \n "
                            f"trend_28 {trend_28} \n "
+                           f"slope_80 {slope_80_d} \n "
+                           f"trend_80 {trend_80} \n "
                            f"slope_120 {slope_120_d} \n "
                            f"trend_120 {trend_120} \n "
                            f"slope_180 {slope_180_d} \n "
