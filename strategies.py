@@ -1606,7 +1606,7 @@ class BreakoutStrategy(Strategy):
                       vol_sma_desc)
 
             #funciona mal
-            long10 = ("Resistance" != zone != "BrokeResistance" and volume_asc_last and red_win and
+            long10 = ("Resistance" != zone != "BrokeResistance" and volume_asc_last and green_count >= 10 and
                       trend_10 == STRONG_BULLISH == trend_28 and vwap_value < last_candle_close and
                       slope_28_d > 0 < slope_80_d and vol_sma_asc)
             # funciona bien
@@ -1644,9 +1644,9 @@ class BreakoutStrategy(Strategy):
 
             # bien
             long15 = ("Resistance" != zone != "BrokeResistance" and (crosses_vwap_up or crosses_vwap_up_20) and
-                      slope_120_d > 0 and volume_asc and last_candle_close > vwap_value)
+                      slope_120_d > 0 and volume_asc and last_candle_close > vwap_value and vwap_desc)
             short15 = ("Support" != zone != "BrokeSupport" and (crosses_vwap_down or crosses_vwap_down_20) and
-                       slope_120_d < 0 and volume_desc and last_candle_close < vwap_value)
+                       slope_120_d < 0 and volume_desc and last_candle_close < vwap_value and vwap_asc)
 
             long16 = ("Resistance" != zone != "BrokeResistance" and vwap_asc and green_win and vol_sma_asc and
                       crosses_vwap_up and vwap_asc_20 and slope_120_d > 0)

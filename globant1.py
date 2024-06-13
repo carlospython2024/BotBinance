@@ -1,44 +1,54 @@
+# import pandas
+#
+# nato_csv = pandas.read_csv("nato_phonetic_alphabet.csv")
+#
+# nato_dict = {row.letter: row.code for (index, row) in nato_csv.iterrows()}
+#
+# word = input("Enter a word: ")
+# nato_result = [nato_dict[letter.upper()] for letter in word]
+# print(nato_result)
+
+# String que representa una lista de listas
+
 import ast
+import tty
+import sys
+import termios
+
+# def get_arrow_key():
+#     fd = sys.stdin.fileno()
+#     old_settings = termios.tcgetattr(fd)
+#     try:
+#         tty.setraw(sys.stdin.fileno())
+#         ch = sys.stdin.read(1)
+#     finally:
+#         termios.tcsetattr(fd, termios.TCSADRAIN, old_settings)
+#     return ch
+#
+# arrow_key = None
+# while arrow_key != 'q':
+#     arrow_key = get_arrow_key()
+#     if arrow_key == '\x1b[D':  # Flecha izquierda
+#         print('Izquierda')
+#     elif arrow_key == '\x1b[C':  # Flecha derecha
+#         print('Derecha')
+#     elif arrow_key == 'q':
+#         break
 
 
-def reorder_list_by_hierarchy(lista, n):
-    return lista[n:] + lista[:n]
+def reorder_list(lista, n):
+    return list[n:] + list[:n]
 
 
-def check_pair_winner(player_one_move, player_two_move):
-    hierarchy = ['l', 's', 'r', 'v', 'p']
-    position_p_one = hierarchy.index(player_one_move)
-    position_p_two = hierarchy.index(player_two_move)
-    if player_one_move != player_two_move:
-        new_position = position_p_one + 3 if position_p_one < 3 else position_p_one - 2
-        new_list = reorder_list_by_hierarchy(hierarchy, new_position)
-        player_one_hierarchy = new_list.index(player_one_move)
-        player_two_hierarchy = new_list.index(player_two_move)
-        if player_one_hierarchy > player_two_hierarchy:
-            return "win"
-        else:
-            return "loose"
-    else:
-        return "draw"
+arr_string = input("Input an array of integers, example [1, 2, 3]: ")
+lists_to_check = ast.literal_eval(arr_string)
 
-
-example_list_one = "[['r', 'v', 's', 's'], ['l', 'p', 'r', 'v']]"
-example_list_two = "[['l', 'v', 'r'], ['p', 'r', 's']]"
-# You can use one of this list to test or create a new one
-lists_to_check = ast.literal_eval(example_list_one)
-
-player_one_wins = 0
-player_two_wins = 0
-for delta, player_one_element in enumerate(lists_to_check[0]):
-    checked_pair = check_pair_winner(player_one_element, lists_to_check[1][delta])
-    if checked_pair == "win":
-        player_one_wins += 1
-    elif checked_pair == "loose":
-        player_two_wins += 1
-
-if player_one_wins > player_two_wins:
-    print("player 1")
-elif player_two_wins > player_one_wins:
-    print("player 2")
+positions_to_move = int(input("Input the number of positions to rotate the array."))
+if positions_to_move < len(lists_to_check):
+    new_list = reorder_list(lists_to_check, positions_to_move)
+    print(new_list)
 else:
-    print("tie")
+    print("Out of the range, you can't move the array.")
+
+# direction = input("Use the arrow left or right to select direction to rotate the array")
+# print(f"La dirección que ingresaste es: {direction}")
