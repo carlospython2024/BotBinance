@@ -356,7 +356,7 @@ class Strategy:
         elif df['Gap_Up_Pct'].iloc[-1] > 0 and df['Relative_Volume'].iloc[-1] >= 0.6:
             print(f"It's likely that today will mark the beginning of the {self.contract.symbol} BULL trend Relative Volume is {df['Relative_Volume'].iloc[-1]} and GAP Up Percentage {df['Gap_Up_Pct'].iloc[-1]}.")
         elif df['Relative_Volume'].iloc[-1] >= 3 and df['Gap_Up_Pct'].iloc[-1] == 0:
-            print(f"High Gap is very low today but Relative volume is high {df['Relative_Volume'].iloc[-1]} for {self.contract.symbol}.")
+            print(f"There no High Gap today, but Relative volume is high {df['Relative_Volume'].iloc[-1]} for {self.contract.symbol}.")
         elif df['Relative_Volume'].iloc[-1] >= 0.6:
             print(f"There is not Gap Up right now for {self.contract.symbol} and the Relative Volume is {df['Relative_Volume'].iloc[-1]}.")
         elif df['Gap_Up_Pct'].iloc[-1] != 0:
@@ -1586,10 +1586,10 @@ class BreakoutStrategy(Strategy):
             bull_condition = ("Resistance" !=  zone != "BrokeResistance" and volume_asc and closes[-2] > vwap_value < opens[-2] and
                               closes[-4] < vwap_value and vwap_asc_20 and volume_above_sma and green_win)
             sell_condition = ("Support" != zone != "BrokeSupport" and volume_desc and closes[-2] < vwap_value > opens[-2] and
-                              closes[-4] > vwap_value and vwap_desc_20 and volume_above_sma and red_win)
+                              closes[-4] > vwap_value and vwap_desc_20 and red_win)
 
             # bien +++
-            long6 = crosses_vwap_up and bull_condition and slope_10_d > 0
+            long6 = crosses_vwap_up and bull_condition and vol_sma_asc and slope_10_d > 0
             # mal -
             short6 = crosses_vwap_down and sell_condition and vol_sma_desc and slope_10_d < 0
 
@@ -1599,18 +1599,18 @@ class BreakoutStrategy(Strategy):
             # bien +
             long9 = (zone != "BrokeResistance" and vwap_value_20 < vwap_value < last_candle_close and vwap_asc_20 and
                      crosses_vwap_up and volume_above_sma and green and candle_type == BULLISH and volume_asc and
-                     adx_tendency == BEARISH)
+                     vol_sma_asc)
             short9 = (zone != "BrokeSupport" and vwap_value_20 > vwap_value > last_candle_close and vwap_desc_20 and
-                      crosses_vwap_down and red and candle_type == BEARISH and volume_desc and volume_asc and
-                      adx_tendency == BEARISH)
+                      crosses_vwap_down and red and candle_type == BEARISH and volume_desc and volume_desc and
+                      vol_sma_desc)
             
             long10 = ("Resistance" != zone != "BrokeResistance" and volume_asc_last and red_win and
                       trend_10 == STRONG_BULLISH == trend_28 and vwap_value < last_candle_close and
-                      slope_28_d > 0 < slope_180_d)
+                      slope_28_d > 0 < slope_180_d and vol_sma_asc)
             # ?-
             short10 = ("Support" != zone != "BrokeSupport" and volume_desc_last and green_win and
                        trend_10 == STRONG_BEARISH == trend_28 and vwap_value > last_candle_close and
-                       slope_180_d < 0 > slope_28_d)
+                       slope_180_d < 0 > slope_28_d and vol_sma_desc)
 
             #funciona mal
             long11 = (slope_180_d > 0 < slope_28_d and "Resistance" != zone != "BrokeResistance" and bull_condition)
@@ -1635,20 +1635,21 @@ class BreakoutStrategy(Strategy):
             long14 = ("Resistance" != zone != "BrokeResistance" and slope_10_d > 0 < slope_28_d and volume_desc and
                       green_win and vwap_asc and green and last_volume_signal == "buy" and adx_tendency == BULLISH and
                       vwap_value_20 > vwap_value)
+            #bien
             short14 = ("Support" != zone != "BrokeSupport" and slope_10_d < 0 > slope_28_d and vol_sma_asc and red_win and
                        vwap_desc and red and last_volume_signal == "sell" and adx_tendency == BEARISH and
                        vwap_value_20 < vwap_value)
 
             # bien
             long15 = ("Resistance" != zone != "BrokeResistance" and (crosses_vwap_up or crosses_vwap_up_20) and
-                      slope_10_d > 0 < slope_28_d and vwap_asc_20 and green and volume_above_sma and
-                      candle_type == BULLISH and green_win and volume_asc)
+                      slope_120_d > 0 and volume_asc and last_candle_close > vwap_value)
             short15 = ("Support" != zone != "BrokeSupport" and (crosses_vwap_down or crosses_vwap_down_20) and
-                       slope_10_d < 0 > slope_28_d and vwap_desc_20 and red and candle_type == BEARISH and red_win and
-                       volume_desc)
+                       slope_120_d < 0 and volume_desc and last_candle_close < vwap_value)
 
-            long16 = vwap_asc and red_win and vol_sma_asc and (crosses_vwap_up or crosses_vwap_down)
-            short16 = vwap_desc and green_win and vol_sma_desc and (crosses_vwap_up or crosses_vwap_down)
+            long16 = ("Resistance" != zone != "BrokeResistance" and vwap_asc and green_win and vol_sma_asc and
+                      crosses_vwap_up and vwap_asc_20 and slope_120_d > 0)
+            short16 = ("Support" != zone != "BrokeSupport" and vwap_desc and red_win and vol_sma_desc and
+                       crosses_vwap_down and vwap_desc_20 and slope_120_d < 0)
 
             # max_profit = max( max_limit, (last_candle_close + (last_candle_close - ema_200[-1])))
             self.take_profit_long = max_limit
@@ -1889,8 +1890,8 @@ class BreakoutStrategy(Strategy):
                 return return_long
             elif short14:
                 logger.info("Short14 " + sell_message)
-                toaster = Notification(app_id="New order on Binance Short13",
-                                       title=f"{self.contract.symbol} Short13",
+                toaster = Notification(app_id="New order on Binance Short14",
+                                       title=f"{self.contract.symbol} Short14",
                                        msg=f"{sl_tp_short_message}",
                                        duration=f"long",
                                        icon=ICON_SHORT)
@@ -1910,8 +1911,8 @@ class BreakoutStrategy(Strategy):
                 # return return_long
             elif short15:
                 logger.info("Short15 " + sell_message)
-                toaster = Notification(app_id="New order on Binance Short13",
-                                       title=f"{self.contract.symbol} Short13",
+                toaster = Notification(app_id="New order on Binance Short15",
+                                       title=f"{self.contract.symbol} Short15",
                                        msg=f"{sl_tp_short_message}",
                                        duration=f"long",
                                        icon=ICON_SHORT)
@@ -1931,8 +1932,8 @@ class BreakoutStrategy(Strategy):
                 # return return_long
             elif short16:
                 logger.info("Short16 " + sell_message)
-                toaster = Notification(app_id="New order on Binance Short13",
-                                       title=f"{self.contract.symbol} Short13",
+                toaster = Notification(app_id="New order on Binance Short16",
+                                       title=f"{self.contract.symbol} Short16",
                                        msg=f"{sl_tp_short_message}",
                                        duration=f"long",
                                        icon=ICON_SHORT)
