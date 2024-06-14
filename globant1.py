@@ -1,20 +1,9 @@
-import ast
 
+string = input("Input a string of dogs with color black or white 1 for black and 0 for \n" 
+               " white and I will tell you the number of steps to reorder by color,"
+               " example 10010 you'll get 4 steps \n: ")
 
-def reorder_list(list, n):
-    return list[n:] + list[:n]
+onehundred_count = string.count('100')
+ten_count = string.count('10')
 
-
-arr_string = input("Input an array of integers, example [1, 2, 3]: ")
-lists_to_check = ast.literal_eval(arr_string)
-
-positions_to_move = int(input("Input the number of positions to rotate the array. "))
-direction = input("Press < to move the array to the left or > to move the array to the right. ")
-
-if positions_to_move < len(lists_to_check) and (direction == "<" or direction == ">"):
-    positions_to_move = positions_to_move * -1 if direction == "<" else positions_to_move
-    new_list = reorder_list(lists_to_check, positions_to_move)
-    print(new_list)
-else:
-    print("Out of the range, you can't move the array, or select a proper direction.")
-
+print((onehundred_count * 3) + ((ten_count - onehundred_count) * 2) - 1 if onehundred_count > 0 else ten_count)

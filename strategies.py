@@ -1614,7 +1614,7 @@ class BreakoutStrategy(Strategy):
                        trend_10 == STRONG_BEARISH == trend_28 and vwap_value > last_candle_close and
                        slope_180_d < 0 > slope_28_d and vol_sma_desc)
 
-            #funciona mal
+            #funciona bien
             long11 = (slope_180_d > 0 < slope_28_d and "Resistance" != zone != "BrokeResistance" and bull_condition)
             short11 = (slope_180_d < 0 > slope_28_d and "Support" != zone != "BrokeSupport" and sell_condition)
 
