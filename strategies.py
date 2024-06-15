@@ -1331,8 +1331,8 @@ class Strategy:
         df['cumulativeTypicalPriceVolume'] = df['typicalPriceVolume'].rolling(window=cumulative_period).sum()
         df['cumulativeVolume'] = df['Volume'].rolling(window=cumulative_period).sum()
         df['vwapValue'] = df['cumulativeTypicalPriceVolume'] / df['cumulativeVolume']
-        vwap_asc = df['vwapValue'].values[-3] < df['vwapValue'].values[-2] < df['vwapValue'].values[-1]
-        vwap_desc = df['vwapValue'].values[-3] > df['vwapValue'].values[-2] > df['vwapValue'].values[-1]
+        vwap_asc = df['vwapValue'].values[-3] < df['vwapValue'].values[-2]
+        vwap_desc = df['vwapValue'].values[-3] > df['vwapValue'].values[-2]
 
         return vwap_asc, vwap_desc, df['vwapValue'].values[-1]
 
@@ -1480,6 +1480,7 @@ class BreakoutStrategy(Strategy):
         # self._rsi_ma_oversold = other_params['rsi_ma_oversold']
         self._long_enable = other_params['long_enable']
         self._short_enable = other_params['short_enable']
+        self._regression_length = other_params['regression_length']
         # self._ut_key_value = other_params['ut_key_value']
         # self._ut_atr_period = other_params['ut_atr_period']
         # self._test_mode = other_params['test_mode']
@@ -1537,10 +1538,10 @@ class BreakoutStrategy(Strategy):
                 case "1h": cumulative_period = 30
                 case "4h": cumulative_period = 30
 
-            vwap_asc, vwap_desc, vwap_value = self._vwap(data, cumulative_period)
+            vwap_asc_long, vwap_desc_long, vwap_value_long = self._vwap(data, cumulative_period)
             # reg_period = int(round(cumulative_period / 2, 0))
             # vwap_asc, vwap_desc, _ = self._vwap_reg(data, cumulative_period, reg_period)
-            vwap_asc_20, vwap_desc_20, vwap_value_20 = self._vwap_reg(data, 30, 10)
+            vwap_asc_short, vwap_desc_34, vwap_value_short = self._vwap(data, 34)
 
             green_win, red_win, green_count, red_count = self.green_vs_red(opens, closes)
 
@@ -1567,162 +1568,80 @@ class BreakoutStrategy(Strategy):
             _, slope_80_d, trend_80 = self.get_slope(close_arr, 80)
             _, slope_180_d, trend_180 = self.get_slope(close_arr, 180)
             slope_120, slope_120_d, trend_120 = self.get_slope(close_arr, 120)
-            slope_28, slope_28_d, trend_28 = self.get_slope(close_arr, 28)
+            slope_35, slope_35_d, trend_35 = self.get_slope(close_arr, self._regression_length)
             slope_10, slope_10_d, trend_10 = self.get_slope(close_arr, 10)
             atr_volatility, atr_mean = self.bollinger_strat(data)
             adx, adx_tendency = self.adx_strat(close_arr, low_arr, high_arr)
 
             buy_volume, sell_volume, last_volume_signal = self.volume_strat(data, 1.3, 0.7)
             # buy_triple_ema, sell_triple_ema = self.triple_ema_fibonashi(close_arr, 21, 50, 200)
-            crosses_vwap_up = opens[-3] < vwap_value < closes[-3]
-            crosses_vwap_down = opens[-3] > vwap_value > closes[-3]
+            crosses_vwap_up = opens[-3] < vwap_value_long < closes[-3]
+            crosses_vwap_down = opens[-3] > vwap_value_long > closes[-3]
 
-            crosses_vwap_up_20 = opens[-3] < vwap_value_20 < closes[-3]
-            crosses_vwap_down_20 = opens[-3] > vwap_value_20 > closes[-3]
+            crosses_vwap_up_20 = opens[-3] < vwap_value_short < closes[-3]
+            crosses_vwap_down_20 = opens[-3] > vwap_value_short > closes[-3]
             # rsi_buy, rsi_sell, last_rsi = self.rsi_strat(data)
 
             green = opens[-2] < closes[-2]
             red = opens[-2] > closes[-2]
 
-            bull_condition = ("Resistance" !=  zone != "BrokeResistance" and volume_asc and closes[-2] > vwap_value < opens[-2] and
-                              closes[-4] < vwap_value and vwap_asc_20 and volume_above_sma and green_win)
-            sell_condition = ("Support" != zone != "BrokeSupport" and volume_desc and closes[-2] < vwap_value > opens[-2] and
-                              closes[-4] > vwap_value and vwap_desc_20 and red_win)
+            long1 = ("Resistance" != zone != "BrokeResistance" and crosses_vwap_up and vwap_value_short < vwap_value_long
+                     and not crosses_vwap_up_20 and vwap_asc_long and volume_above_sma and slope_35 > 0 and green_win)
 
-            # bien +++
-            long6 = crosses_vwap_up and bull_condition and vol_sma_asc and slope_10_d > 0
-            # mal -
-            short6 = crosses_vwap_down and sell_condition and vol_sma_desc and slope_10_d < 0
+            long11 = ("Resistance" != zone != "BrokeResistance" and slope_180_d > 0 < slope_35_d and volume_asc_last and
+                      last_candle_close < vwap_value_long and vwap_asc_short and volume_above_sma and green_win)
 
-            long7 = (zone != "BrokeResistance" and vwap_value_20 < vwap_value < last_candle_close and long6)
-            short7 = (zone != "BrokeSupport" and vwap_value_20 > vwap_value > last_candle_close and short6)
+            long16 = ("Resistance" != zone != "BrokeResistance" and vwap_asc_long and green_win and crosses_vwap_up and
+                      slope_180_d > 0 < slope_35 and volume_above_sma)
 
-            # bien +
-            long9 = (zone != "BrokeResistance" and vwap_value_20 < vwap_value < last_candle_close and vwap_asc_20 and
-                     crosses_vwap_up and volume_above_sma and green and candle_type == BULLISH and volume_asc and
-                     vol_sma_asc)
-            short9 = (zone != "BrokeSupport" and vwap_value_20 > vwap_value > last_candle_close and vwap_desc_20 and
-                      crosses_vwap_down and red and candle_type == BEARISH and volume_desc and volume_desc and
-                      vol_sma_desc)
+            short1 = ("Support" != zone != "BrokeSupport" and crosses_vwap_down and vwap_value_short > vwap_value_long
+                      and not crosses_vwap_down_20 and vwap_desc_long and volume_above_sma and slope_35 < 0 and red_win)
 
-            #funciona mal
-            long10 = ("Resistance" != zone != "BrokeResistance" and volume_asc_last and green_count >= 10 and
-                      trend_10 == STRONG_BULLISH == trend_28 and vwap_value < last_candle_close and
-                      slope_28_d > 0 < slope_80_d and vol_sma_asc)
-            # funciona bien
-            short10 = ("Support" != zone != "BrokeSupport" and volume_desc_last and green_win and
-                       trend_10 == STRONG_BEARISH == trend_28 and vwap_value > last_candle_close and
-                       slope_180_d < 0 > slope_28_d and vol_sma_desc)
+            short11 = ("Support" != zone != "BrokeSupport" and slope_180_d < 0 > slope_35_d and volume_desc and
+                       last_candle_close > vwap_value_long and vwap_asc_short and not volume_above_sma and red_win)
 
-            #funciona bien
-            long11 = (slope_180_d > 0 < slope_28_d and "Resistance" != zone != "BrokeResistance" and bull_condition)
-            short11 = (slope_180_d < 0 > slope_28_d and "Support" != zone != "BrokeSupport" and sell_condition)
+            short16 = ("Support" != zone != "BrokeSupport" and vwap_desc_long and red_win and crosses_vwap_down and 
+                       slope_180_d < 0 > slope_35 and volume_above_sma)
 
-            # funciona bien
-            long12 = ("Resistance" != zone != "BrokeResistance" and slope_10_d > 0 and volume_asc and green_win and
-                      vwap_asc and green and last_volume_signal == "buy" and candle_type == BULLISH
-                      and slope_120_d > 0 and vwap_value_20 > vwap_value and vol_sma_asc)
-            # funciona bien
-            short12 = ("Support" != zone != "BrokeSupport" and slope_10_d < 0 and volume_asc and red_win and
-                       vwap_desc and red and last_volume_signal == "sell" and candle_type == BEARISH
-                       and slope_120_d < 0 and vwap_value_20 < vwap_value and vol_sma_desc)
-
-            long13 = ("Resistance" != zone != "BrokeResistance" and slope_10_d > 0 and volume_asc and green_win
-                      and vwap_asc and green and volume_above_sma and candle_type == BULLISH and adx_tendency == BEARISH
-                      and not vwap_desc_20 and last_volume_signal == "buy" and vwap_value_20 > vwap_value)
-            short13 = ("Support" != zone != "BrokeSupport" and slope_10_d < 0 and volume_desc and red_win and
-                       vwap_desc and red and not volume_above_sma and candle_type == BEARISH and adx_tendency == BULLISH
-                       and not vwap_asc_20 and last_volume_signal == "sell" and vwap_value_20 < vwap_value)
-            #bien
-            long14 = ("Resistance" != zone != "BrokeResistance" and slope_10_d > 0 < slope_28_d and volume_desc and
-                      green_win and vwap_asc and green and last_volume_signal == "buy" and adx_tendency == BULLISH and
-                      vwap_value_20 > vwap_value)
-            #bien
-            short14 = ("Support" != zone != "BrokeSupport" and slope_10_d < 0 > slope_28_d and vol_sma_asc and red_win and
-                       vwap_desc and red and last_volume_signal == "sell" and adx_tendency == BEARISH and
-                       vwap_value_20 < vwap_value)
-
-            # bien
-            long15 = ("Resistance" != zone != "BrokeResistance" and (crosses_vwap_up or crosses_vwap_up_20) and
-                      slope_120_d > 0 and volume_asc and last_candle_close > vwap_value and vwap_desc)
-            short15 = ("Support" != zone != "BrokeSupport" and (crosses_vwap_down or crosses_vwap_down_20) and
-                       slope_120_d < 0 and volume_desc and last_candle_close < vwap_value and vwap_asc)
-
-            long16 = ("Resistance" != zone != "BrokeResistance" and vwap_asc and green_win and vol_sma_asc and
-                      crosses_vwap_up and vwap_asc_20 and slope_120_d > 0)
-            short16 = ("Support" != zone != "BrokeSupport" and vwap_desc and red_win and vol_sma_desc and
-                       crosses_vwap_down and vwap_desc_20 and slope_120_d < 0)
-
-            # max_profit = max( max_limit, (last_candle_close + (last_candle_close - ema_200[-1])))
             self.take_profit_long = max_limit
             self.stop_loss_long = last_candle_close - ((self.take_profit_long - last_candle_close) * 0.85)
 
-            # min_profit = min(support_limit, (last_candle_close - (ema_200[-1] - last_candle_close)))
             self.take_profit_short = min_limit
             self.stop_loss_short = last_candle_close + ((last_candle_close - self.take_profit_short) * 0.85)
 
-            # if zone == "Resistance" and ema_21[-1] < last_candle_close < max_limit:
-            #     pass
-            # long5 = short5 = False
-            # if zone == "Neutral":
-            #     long5 = (buy_triple_ema and last_candle_close > ema_200[-1] < vwap_value and slope_120 > 2 and
-            #              trend_28 == STRONG_BULLISH and vwap_asc and last_volume_signal == "buy" and
-            #              closes[-2] <= last_candle_close > ema_21[-1])
-            #     short5 = (sell_triple_ema and last_candle_close < ema_200[-1] > vwap_value and slope_120 < -2 and
-            #               trend_28 == STRONG_BEARISH and vwap_desc and last_volume_signal == "sell" and
-            #               closes[-2] >= last_candle_close < ema_21[-1])
-            #     self.take_profit_long = last_candle_close + (last_candle_close - ema_200[-1])
-            #     self.stop_loss_long = ema_200[-1]
-            #
-            #     self.take_profit_short = last_candle_close - (ema_200[-1] - last_candle_close)
-            #     self.stop_loss_short = last_candle_close + ((ema_200[-1] - last_candle_close) * 0.7)
-            #
-            # if zone == "Support" and min_limit < last_candle_close < ema_50[-1]:
-            #     pass
-
-
-            # @todo anadir validaciones chat gpt, gap, volumen relative, etc
             # @todo crear un probador de estrategias con los datos historicos de peridos especificos
 
             log_message = (f"Breakout for {self.contract.symbol} {self.tf}\n "
-                           f"atr_volatility {atr_volatility} \n "
-                           f"adx_tendency {adx_tendency} \n "
-                           f"atr_mean {atr_mean} \n "
-                           f"candle_type {candle_type} \n "
-                           f"candle green {green} \n "
                            f"candle green wins {green_win} \n "
                            f"candle green_count {green_count} \n "
                            f"candle red wins {red_win} \n "
                            f"candle red_count {red_count} \n "
-                           f"candle red {red} \n "
                            f"vwap period {cumulative_period} \n "
                            f"vwap period {cumulative_period} \n "
                            f"Entry price {last_candle_close} \n "
-                           # f"last_rsi {last_rsi} \n "
-                           f"last_volume_signal {last_volume_signal} \n "
                            f"max_limit {max_limit} \n "
-                           f"previous_candle_type {previous_candle_type} \n "
                            f"resistance_limit {resistance_limit} \n "
                            f"support_limit {support_limit} \n "
                            f"min_limit {min_limit} \n "
                            f"slope_10 {slope_10_d} \n "
                            f"trend_10 {trend_10} \n "
-                           f"slope_28 {slope_28_d} \n "
-                           f"trend_28 {trend_28} \n "
+                           f"slope_28 {slope_35_d} \n "
+                           f"trend_28 {trend_35} \n "
                            f"slope_80 {slope_80_d} \n "
                            f"trend_80 {trend_80} \n "
                            f"slope_120 {slope_120_d} \n "
                            f"trend_120 {trend_120} \n "
                            f"slope_180 {slope_180_d} \n "
+                           f"regression_length {self._regression_length} \n "
                            f"trend_180 {trend_180} \n "
                            f"timeframe {self.tf} \n "
-                           f"vwap_value {vwap_value} \n "
-                           f"vwap_asc_20 {vwap_asc_20} \n "
-                           f"vwap_desc_20 {vwap_desc_20} \n "
-                           f"vwap_asc {vwap_asc} \n "
-                           f"vwap_desc {vwap_desc} \n "
-                           f"volume_asc {volume_asc} \n "
-                           f"volume_desc {volume_desc} \n "
+                           f"vwap_value {vwap_value_long} \n "
+                           f"vwap_asc_20 {vwap_asc_short} \n "
+                           f"vwap_desc_20 {vwap_desc_34} \n "
+                           f"vwap_asc {vwap_asc_long} \n "
+                           f"vwap_desc {vwap_desc_long} \n "
+                           f"volume_asc {volume_asc_last} \n "
+                           f"volume_desc {volume_desc_last} \n "
                            f"volume_above_sma {volume_above_sma} \n "
                            f"vol_sma_asc {vol_sma_asc} \n "
                            f"vol_sma_desc {vol_sma_desc} \n "
@@ -1735,90 +1654,27 @@ class BreakoutStrategy(Strategy):
             return_long = 1 if self._long_enable == 1 else 0
             return_short = -1 if self._short_enable == 1 else 0
             
-            if long6:
-                logger.info("Long6 " + buy_message)
-                toaster = Notification(app_id="New order on Binance Long6",
-                                       title=f"{self.contract.symbol} Long6",
+            if long1:
+                logger.info("Long1 " + buy_message)
+                toaster = Notification(app_id="New order on Binance Long1",
+                                       title=f"{self.contract.symbol} Long1",
                                        msg=f"{sl_tp_long_message}",
                                        duration=f"long",
                                        icon=ICON_LONG)
                 toaster.set_audio(audio.LoopingAlarm, loop=False)
                 toaster.show()
                 # return return_long
-            elif short6:
-                logger.info("Short6 " + sell_message)
-                toaster = Notification(app_id="New order on Binance Short6",
-                                       title=f"{self.contract.symbol} Short6",
+            elif short1:
+                logger.info("Short1 " + sell_message)
+                toaster = Notification(app_id="New order on Binance Short1",
+                                       title=f"{self.contract.symbol} Short1",
                                        msg=f"{sl_tp_short_message}",
                                        duration=f"long",
                                        icon=ICON_SHORT)
                 toaster.set_audio(audio.LoopingAlarm, loop=False)
                 toaster.show()
                 # return return_short
-                
-            elif long7:
-                logger.info("Long7 " + buy_message)
-                toaster = Notification(app_id="New order on Binance Long7",
-                                       title=f"{self.contract.symbol} Long7",
-                                       msg=f"{sl_tp_long_message}",
-                                       duration=f"long",
-                                       icon=ICON_LONG)
-                toaster.set_audio(audio.LoopingAlarm, loop=False)
-                toaster.show()
-                # return return_long
-            elif short7:
-                logger.info("Short7 " + sell_message)
-                toaster = Notification(app_id="New order on Binance Short7",
-                                       title=f"{self.contract.symbol} Short7",
-                                       msg=f"{sl_tp_short_message}",
-                                       duration=f"long",
-                                       icon=ICON_SHORT)
-                toaster.set_audio(audio.LoopingAlarm, loop=False)
-                toaster.show()
-                # return return_short
-
-            elif long9:
-                logger.info("long9 " + buy_message)
-                toaster = Notification(app_id="New order on Binance Long9",
-                                       title=f"{self.contract.symbol} Long9",
-                                       msg=f"{sl_tp_long_message}",
-                                       duration=f"long",
-                                       icon=ICON_LONG)
-                toaster.set_audio(audio.LoopingAlarm, loop=False)
-                toaster.show()
-                # return return_long
-            elif short9:
-                logger.info("Short9 " + sell_message)
-                toaster = Notification(app_id="New order on Binance Short9",
-                                       title=f"{self.contract.symbol} Short9",
-                                       msg=f"{sl_tp_short_message}",
-                                       duration=f"long",
-                                       icon=ICON_SHORT)
-                toaster.set_audio(audio.LoopingAlarm, loop=False)
-                toaster.show()
-                # return return_short
-                
-            elif long10:
-                logger.info("long10 " + buy_message)
-                toaster = Notification(app_id="New order on Binance Long10",
-                                       title=f"{self.contract.symbol} Long10",
-                                       msg=f"{sl_tp_long_message}",
-                                       duration=f"long",
-                                       icon=ICON_LONG)
-                toaster.set_audio(audio.LoopingAlarm, loop=False)
-                toaster.show()
-                # return return_long
-            elif short10:
-                logger.info("Short10 " + sell_message)
-                toaster = Notification(app_id="New order on Binance Short10",
-                                       title=f"{self.contract.symbol} Short10",
-                                       msg=f"{sl_tp_short_message}",
-                                       duration=f"long",
-                                       icon=ICON_SHORT)
-                toaster.set_audio(audio.LoopingAlarm, loop=False)
-                toaster.show()
-                # return return_short
-
+            
             elif long11:
                 logger.info("Long11 " + buy_message)
                 toaster = Notification(app_id="New order on Binance Long11",
@@ -1839,91 +1695,6 @@ class BreakoutStrategy(Strategy):
                 toaster.set_audio(audio.LoopingAlarm, loop=False)
                 toaster.show()
                 # return return_short
-                
-            elif long12:
-                logger.info("Long12 " + buy_message)
-                toaster = Notification(app_id="New order on Binance Long12",
-                                       title=f"{self.contract.symbol} Long12",
-                                       msg=f"{sl_tp_long_message}",
-                                       duration=f"long",
-                                       icon=ICON_LONG)
-                toaster.set_audio(audio.LoopingAlarm, loop=False)
-                toaster.show()
-                return return_long
-            elif short12:
-                logger.info("Short12 " + sell_message)
-                toaster = Notification(app_id="New order on Binance Short12",
-                                       title=f"{self.contract.symbol} Short12",
-                                       msg=f"{sl_tp_short_message}",
-                                       duration=f"long",
-                                       icon=ICON_SHORT)
-                toaster.set_audio(audio.LoopingAlarm, loop=False)
-                toaster.show()
-                return return_short
-
-            elif long13:
-                logger.info("long13 " + buy_message)
-                toaster = Notification(app_id="New order on Binance Long13",
-                                       title=f"{self.contract.symbol} Long13",
-                                       msg=f"{sl_tp_long_message}",
-                                       duration=f"long",
-                                       icon=ICON_LONG)
-                toaster.set_audio(audio.LoopingAlarm, loop=False)
-                toaster.show()
-                # return return_long
-            elif short13:
-                logger.info("Short13 " + sell_message)
-                toaster = Notification(app_id="New order on Binance Short13",
-                                       title=f"{self.contract.symbol} Short13",
-                                       msg=f"{sl_tp_short_message}",
-                                       duration=f"long",
-                                       icon=ICON_SHORT)
-                toaster.set_audio(audio.LoopingAlarm, loop=False)
-                toaster.show()
-                # return return_short
-                
-            elif long14:
-                logger.info("long14 " + buy_message)
-                toaster = Notification(app_id="New order on Binance Long14",
-                                       title=f"{self.contract.symbol} Long14",
-                                       msg=f"{sl_tp_long_message}",
-                                       duration=f"long",
-                                       icon=ICON_LONG)
-                toaster.set_audio(audio.LoopingAlarm, loop=False)
-                toaster.show()
-                return return_long
-            elif short14:
-                logger.info("Short14 " + sell_message)
-                toaster = Notification(app_id="New order on Binance Short14",
-                                       title=f"{self.contract.symbol} Short14",
-                                       msg=f"{sl_tp_short_message}",
-                                       duration=f"long",
-                                       icon=ICON_SHORT)
-                toaster.set_audio(audio.LoopingAlarm, loop=False)
-                toaster.show()
-                return return_short
-            
-            elif long15:
-                logger.info("long15 " + buy_message)
-                toaster = Notification(app_id="New order on Binance Long15",
-                                       title=f"{self.contract.symbol} Long15",
-                                       msg=f"{sl_tp_long_message}",
-                                       duration=f"long",
-                                       icon=ICON_LONG)
-                toaster.set_audio(audio.LoopingAlarm, loop=False)
-                toaster.show()
-                # return return_long
-            elif short15:
-                logger.info("Short15 " + sell_message)
-                toaster = Notification(app_id="New order on Binance Short15",
-                                       title=f"{self.contract.symbol} Short15",
-                                       msg=f"{sl_tp_short_message}",
-                                       duration=f"long",
-                                       icon=ICON_SHORT)
-                toaster.set_audio(audio.LoopingAlarm, loop=False)
-                toaster.show()
-                # return return_short
-                
             elif long16:
                 logger.info("long16 " + buy_message)
                 toaster = Notification(app_id="New order on Binance Long16",
