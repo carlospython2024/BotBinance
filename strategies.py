@@ -1306,10 +1306,8 @@ class Strategy:
         ema_mid = talib.EMA(close_prices, timeperiod=mid)
         ema_slow = talib.EMA(close_prices, timeperiod=slow)
 
-        buy = (ema_fast[-1] > ema_mid[-1] > ema_slow[-1] and close_prices[-3] < ema_fast[-3] and
-               close_prices[-2] > ema_fast[-2])
-        sell = (ema_fast[-1] < ema_mid[-1] < ema_slow[-1] and close_prices[-3] > ema_fast[-3] and
-                close_prices[-2] < ema_fast[-2])
+        buy = (ema_slow[-2] < ema_mid[-2] < ema_fast[-2] and (close_prices[-3] < ema_fast[-3] and close_prices[-2] > ema_fast[-2] or close_prices[-3] < ema_mid[-3] and close_prices[-2] > ema_mid[-2]))
+        sell = (ema_fast[-2] < ema_mid[-2] < ema_slow[-2] and (close_prices[-3] > ema_fast[-3] and close_prices[-2] < ema_fast[-2] or close_prices[-3] > ema_mid[-3] and close_prices[-2] < ema_mid[-2]))
 
         return buy, sell
 
@@ -1481,6 +1479,7 @@ class BreakoutStrategy(Strategy):
         self._long_enable = other_params['long_enable']
         self._short_enable = other_params['short_enable']
         self._regression_length = other_params['regression_length']
+        self._regression_length_triple_ema = other_params['_regression_length_triple_ema']
         # self._ut_key_value = other_params['ut_key_value']
         # self._ut_atr_period = other_params['ut_atr_period']
         # self._test_mode = other_params['test_mode']
@@ -1558,6 +1557,9 @@ class BreakoutStrategy(Strategy):
             volume_desc = data['Volume'].iloc[-3] < data['Volume'].iloc[-4] < data['Volume'].iloc[-5]
             volume_desc_last = data['Volume'].iloc[-2] < data['Volume'].iloc[-3]
 
+            # Tripe Ema
+            buy_tiple_ema, sell_triple_ema = self.triple_ema_fibonashi(close_arr, 16, 64, 100)
+
             candle_type = self.get_candle_type(opens[-2], highs[-2], lows[-2], closes[-2])
             previous_candle_type = self.get_candle_type(opens[-4], highs[-4], lows[-4], closes[-4])
             last_candle_close = closes[-1]
@@ -1565,11 +1567,9 @@ class BreakoutStrategy(Strategy):
             # ema_21 = talib.EMA(close_arr, timeperiod=21)
             # ema_50 = talib.EMA(close_arr, timeperiod=50)
             # ema_200 = talib.EMA(close_arr, timeperiod=200)
-            _, slope_80_d, trend_80 = self.get_slope(close_arr, 80)
+            _, slope_triple_ema_d, trend_triple_ema = self.get_slope(close_arr, self._regression_length_triple_ema)
             _, slope_180_d, trend_180 = self.get_slope(close_arr, 180)
-            slope_120, slope_120_d, trend_120 = self.get_slope(close_arr, 120)
             slope_35, slope_35_d, trend_35 = self.get_slope(close_arr, self._regression_length)
-            slope_10, slope_10_d, trend_10 = self.get_slope(close_arr, 10)
             atr_volatility, atr_mean = self.bollinger_strat(data)
             adx, adx_tendency = self.adx_strat(close_arr, low_arr, high_arr)
 
@@ -1585,6 +1585,7 @@ class BreakoutStrategy(Strategy):
             green = opens[-2] < closes[-2]
             red = opens[-2] > closes[-2]
 
+            # Long
             long1 = ("Resistance" != zone != "BrokeResistance" and crosses_vwap_up and vwap_value_short < vwap_value_long
                      and not crosses_vwap_up_20 and vwap_asc_long and volume_above_sma and slope_35 > 0 and green_win)
 
@@ -1594,14 +1595,19 @@ class BreakoutStrategy(Strategy):
             long16 = ("Resistance" != zone != "BrokeResistance" and vwap_asc_long and green_win and crosses_vwap_up and
                       slope_180_d > 0 < slope_35 and volume_above_sma)
 
+            long17 = zone != "BrokeResistance" and buy_tiple_ema and trend_triple_ema == STRONG_BULLISH
+
+            # Short
             short1 = ("Support" != zone != "BrokeSupport" and crosses_vwap_down and vwap_value_short > vwap_value_long
                       and not crosses_vwap_down_20 and vwap_desc_long and volume_above_sma and slope_35 < 0 and red_win)
 
-            short11 = ("Support" != zone != "BrokeSupport" and slope_180_d < 0 > slope_35_d and volume_desc and
+            short11 = ("Support" != zone != "BrokeSupport" and slope_180_d < 0 > slope_35_d and volume_desc_last and
                        last_candle_close > vwap_value_long and vwap_asc_short and not volume_above_sma and red_win)
 
-            short16 = ("Support" != zone != "BrokeSupport" and vwap_desc_long and red_win and crosses_vwap_down and 
+            short16 = ("Support" != zone != "BrokeSupport" and vwap_desc_long and red_win and crosses_vwap_down and
                        slope_180_d < 0 > slope_35 and volume_above_sma)
+
+            short17 = zone != "BrokeSupport" and sell_triple_ema and trend_triple_ema == STRONG_BEARISH
 
             self.take_profit_long = max_limit
             self.stop_loss_long = last_candle_close - ((self.take_profit_long - last_candle_close) * 0.85)
@@ -1623,15 +1629,11 @@ class BreakoutStrategy(Strategy):
                            f"resistance_limit {resistance_limit} \n "
                            f"support_limit {support_limit} \n "
                            f"min_limit {min_limit} \n "
-                           f"slope_10 {slope_10_d} \n "
-                           f"trend_10 {trend_10} \n "
-                           f"slope_28 {slope_35_d} \n "
-                           f"trend_28 {trend_35} \n "
-                           f"slope_80 {slope_80_d} \n "
-                           f"trend_80 {trend_80} \n "
-                           f"slope_120 {slope_120_d} \n "
-                           f"trend_120 {trend_120} \n "
-                           f"slope_180 {slope_180_d} \n "
+                           f"slope_35_d {slope_35_d} \n "
+                           f"trend_35 {trend_35} \n "
+                           f"slope_120 {slope_triple_ema_d} \n "
+                           f"trend_triple_ema {trend_triple_ema} \n "
+                           f"slope_180_d {slope_180_d} \n "
                            f"regression_length {self._regression_length} \n "
                            f"trend_180 {trend_180} \n "
                            f"timeframe {self.tf} \n "
@@ -1709,6 +1711,27 @@ class BreakoutStrategy(Strategy):
                 logger.info("Short16 " + sell_message)
                 toaster = Notification(app_id="New order on Binance Short16",
                                        title=f"{self.contract.symbol} Short16",
+                                       msg=f"{sl_tp_short_message}",
+                                       duration=f"long",
+                                       icon=ICON_SHORT)
+                toaster.set_audio(audio.LoopingAlarm, loop=False)
+                toaster.show()
+                # return return_short
+                
+            elif long17:
+                logger.info("long17 " + buy_message)
+                toaster = Notification(app_id="New order on Binance Long17",
+                                       title=f"{self.contract.symbol} Long17",
+                                       msg=f"{sl_tp_long_message}",
+                                       duration=f"long",
+                                       icon=ICON_LONG)
+                toaster.set_audio(audio.LoopingAlarm, loop=False)
+                toaster.show()
+                # return return_long
+            elif short17:
+                logger.info("Short17 " + sell_message)
+                toaster = Notification(app_id="New order on Binance Short17",
+                                       title=f"{self.contract.symbol} Short17",
                                        msg=f"{sl_tp_short_message}",
                                        duration=f"long",
                                        icon=ICON_SHORT)
