@@ -1540,22 +1540,20 @@ class BreakoutStrategy(Strategy):
             vwap_asc_long, vwap_desc_long, vwap_value_long = self._vwap(data, cumulative_period)
             # reg_period = int(round(cumulative_period / 2, 0))
             # vwap_asc, vwap_desc, _ = self._vwap_reg(data, cumulative_period, reg_period)
-            vwap_asc_short, vwap_desc_34, vwap_value_short = self._vwap(data, 34)
+            vwap_asc_short, vwap_desc_short, vwap_value_short = self._vwap(data, 34)
 
             green_win, red_win, green_count, red_count = self.green_vs_red(opens, closes)
 
             # Volume LSMA
             volume_length = 50 if self.tf == "1m" else 60
             lsma_relative_volume = self.linear_reg_series(data['Volume'], volume_length, 0)
-            volume_above_sma = data['Volume'].iloc[-3] > lsma_relative_volume[-3] > 0
+            volume_above_sma = data['Volume'].iloc[-2] > lsma_relative_volume[-2] > 0
 
-            vol_sma_asc = lsma_relative_volume[-5] < lsma_relative_volume[-4] < lsma_relative_volume[-3]
-            vol_sma_desc = lsma_relative_volume[-3] < lsma_relative_volume[-4] < lsma_relative_volume[-5]
+            vol_sma_asc = lsma_relative_volume[-4] < lsma_relative_volume[-3] < lsma_relative_volume[-2]
+            vol_sma_desc = lsma_relative_volume[-2] < lsma_relative_volume[-3] < lsma_relative_volume[-4]
 
-            volume_asc = data['Volume'].iloc[-5] < data['Volume'].iloc[-4] < data['Volume'].iloc[-3]
-            volume_asc_last = data['Volume'].iloc[-3] < data['Volume'].iloc[-2]
-            volume_desc = data['Volume'].iloc[-3] < data['Volume'].iloc[-4] < data['Volume'].iloc[-5]
-            volume_desc_last = data['Volume'].iloc[-2] < data['Volume'].iloc[-3]
+            volume_asc = data['Volume'].iloc[-3] < data['Volume'].iloc[-2]
+            volume_desc = data['Volume'].iloc[-3] > data['Volume'].iloc[-2]
 
             # Tripe Ema
             buy_tiple_ema, sell_triple_ema = self.triple_ema_fibonashi(close_arr, 16, 64, 100)
@@ -1575,11 +1573,11 @@ class BreakoutStrategy(Strategy):
 
             buy_volume, sell_volume, last_volume_signal = self.volume_strat(data, 1.3, 0.7)
             # buy_triple_ema, sell_triple_ema = self.triple_ema_fibonashi(close_arr, 21, 50, 200)
-            crosses_vwap_up = opens[-3] < vwap_value_long < closes[-3]
-            crosses_vwap_down = opens[-3] > vwap_value_long > closes[-3]
+            crosses_vwap_up = opens[-2] < vwap_value_long < closes[-2]
+            crosses_vwap_down = opens[-2] > vwap_value_long > closes[-2]
 
-            crosses_vwap_up_20 = opens[-3] < vwap_value_short < closes[-3]
-            crosses_vwap_down_20 = opens[-3] > vwap_value_short > closes[-3]
+            crosses_vwap_up_20 = opens[-2] < vwap_value_short < closes[-2]
+            crosses_vwap_down_20 = opens[-2] > vwap_value_short > closes[-2]
             # rsi_buy, rsi_sell, last_rsi = self.rsi_strat(data)
 
             green = opens[-2] < closes[-2]
@@ -1589,25 +1587,25 @@ class BreakoutStrategy(Strategy):
             long1 = ("Resistance" != zone != "BrokeResistance" and crosses_vwap_up and vwap_value_short < vwap_value_long
                      and not crosses_vwap_up_20 and vwap_asc_long and volume_above_sma and slope_35 > 0 and green_win)
 
-            long11 = ("Resistance" != zone != "BrokeResistance" and slope_180_d > 0 < slope_35_d and volume_asc_last and
+            long11 = ("Resistance" != zone != "BrokeResistance" and slope_180_d > 0 < slope_35_d and volume_asc and
                       last_candle_close < vwap_value_long and vwap_asc_short and volume_above_sma and green_win)
 
             long16 = ("Resistance" != zone != "BrokeResistance" and vwap_asc_long and green_win and crosses_vwap_up and
                       slope_180_d > 0 < slope_35 and volume_above_sma)
 
-            long17 = zone != "BrokeResistance" and buy_tiple_ema and trend_triple_ema == STRONG_BULLISH
+            long17 = zone != "BrokeResistance" and buy_tiple_ema and trend_triple_ema == STRONG_BULLISH and green_win
 
             # Short
             short1 = ("Support" != zone != "BrokeSupport" and crosses_vwap_down and vwap_value_short > vwap_value_long
                       and not crosses_vwap_down_20 and vwap_desc_long and volume_above_sma and slope_35 < 0 and red_win)
 
-            short11 = ("Support" != zone != "BrokeSupport" and slope_180_d < 0 > slope_35_d and volume_desc_last and
-                       last_candle_close > vwap_value_long and vwap_asc_short and not volume_above_sma and red_win)
+            short11 = ("Support" != zone != "BrokeSupport" and slope_180_d < 0 > slope_35_d and volume_desc and
+                       last_candle_close > vwap_value_long and vwap_desc_short and not volume_above_sma and red_win)
 
             short16 = ("Support" != zone != "BrokeSupport" and vwap_desc_long and red_win and crosses_vwap_down and
                        slope_180_d < 0 > slope_35 and volume_above_sma)
 
-            short17 = zone != "BrokeSupport" and sell_triple_ema and trend_triple_ema == STRONG_BEARISH
+            short17 = zone != "BrokeSupport" and sell_triple_ema and trend_triple_ema == STRONG_BEARISH and red_win
 
             self.take_profit_long = max_limit
             self.stop_loss_long = last_candle_close - ((self.take_profit_long - last_candle_close) * 0.85)
@@ -1635,15 +1633,16 @@ class BreakoutStrategy(Strategy):
                            f"trend_triple_ema {trend_triple_ema} \n "
                            f"slope_180_d {slope_180_d} \n "
                            f"regression_length {self._regression_length} \n "
+                           f"_regression_length_triple_ema {self._regression_length_triple_ema} \n "
                            f"trend_180 {trend_180} \n "
                            f"timeframe {self.tf} \n "
                            f"vwap_value {vwap_value_long} \n "
                            f"vwap_asc_20 {vwap_asc_short} \n "
-                           f"vwap_desc_20 {vwap_desc_34} \n "
+                           f"vwap_desc_20 {vwap_desc_short} \n "
                            f"vwap_asc {vwap_asc_long} \n "
                            f"vwap_desc {vwap_desc_long} \n "
-                           f"volume_asc {volume_asc_last} \n "
-                           f"volume_desc {volume_desc_last} \n "
+                           f"volume_asc {volume_asc} \n "
+                           f"volume_desc {volume_desc} \n "
                            f"volume_above_sma {volume_above_sma} \n "
                            f"vol_sma_asc {vol_sma_asc} \n "
                            f"vol_sma_desc {vol_sma_desc} \n "
