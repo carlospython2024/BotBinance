@@ -89,7 +89,9 @@ class StrategyEditor(tk.Frame):
             "Breakout": [
                 {"code_name": "long_enable", "name": "Enable long", "widget": tk.Entry, "data_type": int},
                 {"code_name": "short_enable", "name": "Enable short", "widget": tk.Entry, "data_type": int},
-                {"code_name": "regression_length", "name": "Regression Channel Length", "widget": tk.Entry, "data_type": int},
+                {"code_name": "regression_length_long", "name": "Regression Length Long", "widget": tk.Entry, "data_type": int},
+                {"code_name": "regression_length_short", "name": "Regression Length Short", "widget": tk.Entry, "data_type": int},
+
                 {"code_name": "_regression_length_triple_ema", "name": "Regression length Triple Ema", "widget": tk.Entry, "data_type": int},
                 # {"code_name": "ut_key_value", "name": "UT Key Value", "widget": tk.Entry, "data_type": float},
                 # {"code_name": "ut_atr_period", "name": "UT ATR Period", "widget": tk.Entry, "data_type": int},
