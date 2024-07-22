@@ -7,6 +7,7 @@ import pandas
 import pandas as pd
 import pandas_ta
 import numpy as np
+from pandas.core.interchange import dataframe
 from winotify import Notification, audio
 from models import *
 from datetime import datetime, timezone
@@ -15,7 +16,6 @@ import talib
 import talib.abstract as ta
 import statsmodels.api as sm
 from scipy.stats import linregress
-
 
 if TYPE_CHECKING:  # Import the connector class names only for typing purpose (the classes aren't actually imported)
     from connectors.bitmex import BitmexClient
@@ -277,11 +277,15 @@ class Strategy:
 
         vwap_asc, vwap_desc, _ = self._vwap_reg(data, 10, 8)
         if trade.side == "long":
+            if price >= trade.entry_price * (1 + 1 / 100):
+                tp_triggered = True
             if price >= trade.entry_price * (1 + self.take_profit / 100) and not vwap_asc:
                 tp_triggered = True
             if price <= trade.entry_price * (1 - self.stop_loss / 100):
                 sl_triggered = True
         elif trade.side == "short":
+            if price <= trade.entry_price * (1 - 1 / 100):
+                tp_triggered = True
             if price <= trade.entry_price * (1 - self.take_profit / 100) and not vwap_desc:
                 tp_triggered = True
             if price >= trade.entry_price * (1 + self.stop_loss / 100):
@@ -300,7 +304,6 @@ class Strategy:
                 self._add_log(f"Exit order on {self.contract.symbol} {self.tf} placed successfully")
                 trade.status = "closed"
                 self.ongoing_position = False
-
 
     def create_data_frame(self):
         candles = self.candles
@@ -328,7 +331,8 @@ class Strategy:
         volume_arr = np.array(volume)
         timestamp_arr = np.array(formatted_timestamps)
         data = pd.DataFrame(
-            {'Open': open_arr, 'Close': close_arr, 'Low': low_arr, 'High': high_arr, 'Volume': volume_arr, 'Datetime': timestamp_arr})
+            {'Open': open_arr, 'Close': close_arr, 'Low': low_arr, 'High': high_arr, 'Volume': volume_arr,
+             'Datetime': timestamp_arr})
 
         return data
 
@@ -352,17 +356,23 @@ class Strategy:
 
         # print(f"The current gap up percentage for {self.contract.symbol} is {df['Gap_Up_Pct'].iloc[-1]} Relative Volume is {df['Relative_Volume'].iloc[-1]}")
         if df['Gap_Up_Pct'].iloc[-1] < 0 and df['Relative_Volume'].iloc[-1] >= 0.6:
-            print(f"It's likely that today will mark the beginning of the {self.contract.symbol} BEAR trend Relative Volume is {df['Relative_Volume'].iloc[-1]} and GAP Up Percentage {df['Gap_Up_Pct'].iloc[-1]}.")
+            print(
+                f"It's likely that today will mark the beginning of the {self.contract.symbol} BEAR trend Relative Volume is {df['Relative_Volume'].iloc[-1]} and GAP Up Percentage {df['Gap_Up_Pct'].iloc[-1]}.")
         elif df['Gap_Up_Pct'].iloc[-1] > 0 and df['Relative_Volume'].iloc[-1] >= 0.6:
-            print(f"It's likely that today will mark the beginning of the {self.contract.symbol} BULL trend Relative Volume is {df['Relative_Volume'].iloc[-1]} and GAP Up Percentage {df['Gap_Up_Pct'].iloc[-1]}.")
+            print(
+                f"It's likely that today will mark the beginning of the {self.contract.symbol} BULL trend Relative Volume is {df['Relative_Volume'].iloc[-1]} and GAP Up Percentage {df['Gap_Up_Pct'].iloc[-1]}.")
         elif df['Relative_Volume'].iloc[-1] >= 3 and df['Gap_Up_Pct'].iloc[-1] == 0:
-            print(f"There no High Gap today, but Relative volume is high {df['Relative_Volume'].iloc[-1]} for {self.contract.symbol}.")
+            print(
+                f"There no High Gap today, but Relative volume is high {df['Relative_Volume'].iloc[-1]} for {self.contract.symbol}.")
         elif df['Relative_Volume'].iloc[-1] >= 0.6:
-            print(f"There is not Gap Up right now for {self.contract.symbol} and the Relative Volume is {df['Relative_Volume'].iloc[-1]}.")
+            print(
+                f"There is not Gap Up right now for {self.contract.symbol} and the Relative Volume is {df['Relative_Volume'].iloc[-1]}.")
         elif df['Gap_Up_Pct'].iloc[-1] != 0:
-            print(f"There is a Gap Up of {df['Gap_Up_Pct'].iloc[-1]}%, but the Volume is low for {self.contract.symbol} Relative Volume is {df['Relative_Volume'].iloc[-1]}.")
+            print(
+                f"There is a Gap Up of {df['Gap_Up_Pct'].iloc[-1]}%, but the Volume is low for {self.contract.symbol} Relative Volume is {df['Relative_Volume'].iloc[-1]}.")
         else:
-            print(f"Don't trade today with {self.contract.symbol} GAP Up Percentage {df['Gap_Up_Pct'].iloc[-1]} Relative Volume {df['Relative_Volume'].iloc[-1]}  this Asset is disabled.")
+            print(
+                f"Don't trade today with {self.contract.symbol} GAP Up Percentage {df['Gap_Up_Pct'].iloc[-1]} Relative Volume {df['Relative_Volume'].iloc[-1]}  this Asset is disabled.")
             self.disabled_asset = True
 
     def _ut_bot_alerts(
@@ -1151,16 +1161,154 @@ class Strategy:
         return long_condition.values[-1] and filt.iloc[-1] < close[-1], short_condition.values[-1] and filt.iloc[-1] > \
                close[-1]
 
-    def squeeze_momentum(self, data):
-        length_kc = 20
-        high_rolling = data['High'].rolling(length_kc).max()
-        low_rolling = data['Low'].rolling(length_kc).min()
-        typical_price = (high_rolling + low_rolling + data['Close']) / 3
-        source = data['Close'] - typical_price.rolling(length_kc).mean()
+    def stdev_sqz(self, series, length):
+        return series.rolling(length).std()
+    def _sma_talib(self, series, length):
+        return talib.SMA(series, timeperiod=length)
 
-        val = source.rolling(length_kc).apply(lambda x: linregress(np.arange(len(x)), x.values)[0])
+    def tr(self, dataframe):
+        high_low = dataframe['High'] - dataframe['Low']
+        high_close = np.abs(dataframe['High'] - dataframe['Close'].shift())
+        low_close = np.abs(dataframe['Low'] - dataframe['Close'].shift())
+        return pd.concat([high_low, high_close, low_close], axis=1).max(axis=1)
 
-        return val.values[-1]
+    def get_closest_distances(self, df, factor_long, factor_short):
+        # Calcular el valor máximo y mínimo de los últimos 100 intervalos
+        # highestHighClose = self.highest(df['Close'], lookback)
+        lookback_factor_long = factor_long if factor_long < 1000 else 1000
+        lookback_factor_short = factor_short if factor_short < 1000 else 1000
+
+        highest_high = self.highest(df['High'], lookback_factor_long)
+        max_resistance = self.highest(df['Close'], lookback_factor_long)
+        # lowestLowClose = self.lowest(df['Close'], lookback_factor_short)
+        # lowest_low = self.lowest(df['Low'], lookback_factor_short)
+        max_support = self.lowest(df['Close'], lookback_factor_short)
+
+        # Calcular SMA de los valores máximos y mínimos
+        # highestMa = self._sma_talib(highest_high, 2)
+        # resistance_ma = self._sma_talib(max_resistance, 2)
+        # lowest_ma = self._sma_talib(lowestLowClose, 2)
+        # support_ma = self._sma_talib(max_support, 2)
+
+
+        # Calcular el punto medio entre el valor máximo y mínimo
+        # midPoint = (highest_high + lowest_low) / 2
+        # midMa = self._sma_talib(midPoint, 6)
+
+        # Calcular distancias
+        # midPointDistance = np.abs(df['Close'] - midPoint)
+        # lowest_low_distance = np.abs(df['Close'] - max_resistance)
+
+        # Verificar si el cierre está más cerca de EMA200 que de EMA50
+        # close_to_lowest = lowest_low_distance < midPointDistance
+
+        # Calcular distancias adicionales
+        # midPointDistanceShort = np.abs(midPoint - df['Close'])
+        # highestHighCloseDistance = np.abs(df['Close'] - max_support)
+
+        # Verificar si el cierre está más cerca de EMA200 que de EMA50 en cortos
+        # close_to_highest = highestHighCloseDistance < midPointDistanceShort
+
+        # Añadir los resultados al DataFrame (opcional)
+        # df['resistanceMa'] = resistance_ma
+        df['maxResistance'] = max_resistance
+        # df['highestHigh'] = highest_high
+        # df['highestMa'] = highestMa
+        # df['midPoint'] = midPoint
+
+        df['maxSupport'] = max_support
+        # df['lowestMa'] = lowest_ma
+        # df['lowestLow'] = lowest_low
+        # df['supportMa'] = support_ma
+
+        # Mostrar el DataFrame (opcional)
+        return df
+
+    def squeeze_momentum(self, dataframe):
+        # Parámetros
+        length = 20
+        lengthKC = 20
+        multKC = 1.5
+
+        # Suponiendo que 'dataframe' es tu DataFrame con columnas ['close', 'high', 'low']
+        source = dataframe['Close']
+
+        # Calcular las bandas de Bollinger
+        basis = self._sma_talib(source, length)
+        dev = multKC * self.stdev_sqz(source, length)
+        upperBB = basis + dev
+        lowerBB = basis - dev
+
+        # Calcular KC
+        ma = self._sma_talib(source, lengthKC)
+        rangema = self._sma_talib(self.tr(dataframe), lengthKC)
+        upperKC = ma + rangema * multKC
+        lowerKC = ma - rangema * multKC
+
+        # Condiciones del Squeeze
+        sqzOn = (lowerBB > lowerKC) & (upperBB < upperKC)
+        sqzOff = (lowerBB < lowerKC) & (upperBB > upperKC)
+        noSqz = ~sqzOn & ~sqzOff
+
+        # Calcular el histograma
+        highest_high = dataframe['High'].rolling(lengthKC).max()
+        lowest_low = dataframe['Low'].rolling(lengthKC).min()
+        avg_high_low = (highest_high + lowest_low) / 2
+        histogram = (source - avg_high_low.rolling(lengthKC).mean()).rolling(lengthKC).apply(
+            lambda x: np.polyfit(range(lengthKC), x, 1)[0])
+
+        # Determinar los colores
+        hist_diff = histogram.diff()
+        bcolor = np.where(histogram > 0,
+                          np.where(hist_diff > 0, "bright_green", "dark_green"),
+                          np.where(hist_diff < 0, "bright_red", "dark_red"))
+
+        scolor = np.where(noSqz, 'blue', np.where(sqzOn, 'black', 'gray'))
+
+        # Añadir al DataFrame (opcional)
+        dataframe['histogram'] = histogram
+        dataframe['bcolor'] = bcolor
+        dataframe['scolor'] = scolor
+        # Mostrar el DataFrame
+        # print(dataframe.tail())
+        return dataframe
+
+    def rising(self, series):
+        result = series.iloc[-2] > series.iloc[-3]
+        return result
+
+    def falling(self, series):
+        result = series.iloc[-2] < series.iloc[-3]
+        return result
+
+    def szmom_adx_strat(self, data, factor_long, factor_short):
+        sqz_df = self.squeeze_momentum(data)
+        df = self.get_closest_distances(sqz_df, factor_long, factor_short)
+        # previous_are_black = True
+        # last_six_elements = df['scolor'].iloc[:-3].tail(6)
+        # for index, value in last_six_elements.items():
+        #     if value != 'black':
+        #         previous_are_black = False
+        #         break
+        # print(f"df['bcolor'].iloc[-2] : {df['bcolor'].iloc[-2]}")
+        # print(f"self.rising(df['histogram']) : {self.rising(df['histogram'])}")
+        # print(f"self.falling(df['histogram']) : {self.falling(df['histogram'])}")
+        # print(f"self.rising(df['maxResistance']) : {self.rising(df['maxResistance'])}")
+        # print(f"df['scolor'].iloc[-2] : {df['scolor'].iloc[-2]}")
+        # print(f"self.falling(df['maxSupport']) : {self.falling(df['maxSupport'])}")
+
+        long = (df['bcolor'].iloc[-2] == "bright_green" and self.rising(df['histogram']) and
+                df['scolor'].iloc[-2] == 'gray' and self.rising(df['maxResistance'])) and df['Close'].iloc[-2] > df['Open'].iloc[-2]
+        short = (df['bcolor'].iloc[-2] == "bright_red" and self.falling(df['histogram']) and
+                 df['scolor'].iloc[-2] == 'gray' and self.falling(df['maxSupport']))
+
+        return long, short
+
+    def highest(self, series, length):
+        return series.rolling(window=length).max()
+
+    def lowest(self, series, length):
+        return series.rolling(window=length).min()
 
     def today_is_sunday(self):
         current_date = datetime.today()
@@ -1245,10 +1393,11 @@ class Strategy:
 
         return rsi, rsi_ma[-1]
 
-    def _stochastich(self, high_prices: np.ndarray, low_prices: np.ndarray, close_prices: np.ndarray):
+    def _stochastich(self, high_prices: np.ndarray, low_prices: np.ndarray, close_prices: np.ndarray, k_length: int,
+                     k_smooting: int):
         fast_k, slow_d = talib.STOCH(high_prices, low_prices, close_prices,
-                                     fastk_period=14, slowk_period=3, slowk_matype=0,
-                                     slowd_period=3, slowd_matype=0)
+                                     fastk_period=k_length, slowk_period=k_smooting, slowk_matype=0,
+                                     slowd_period=2, slowd_matype=0)
 
         return fast_k[-1], slow_d[-1]
 
@@ -1267,7 +1416,7 @@ class Strategy:
 
     def session_zones(self, df: pd.DataFrame):
         window = len(df) - 10
-        last_3h_session = df.iloc[window - 120:window]
+        last_3h_session = df.iloc[window - 180:window]
         max_limit = last_3h_session['Close'].max()
         min_limit = last_3h_session['Close'].min()
         zones_size = (max_limit - min_limit) / 5
@@ -1306,8 +1455,12 @@ class Strategy:
         ema_mid = talib.EMA(close_prices, timeperiod=mid)
         ema_slow = talib.EMA(close_prices, timeperiod=slow)
 
-        buy = (ema_slow[-2] < ema_mid[-2] < ema_fast[-2] and (close_prices[-3] < ema_fast[-3] and close_prices[-2] > ema_fast[-2] or close_prices[-3] < ema_mid[-3] and close_prices[-2] > ema_mid[-2]))
-        sell = (ema_fast[-2] < ema_mid[-2] < ema_slow[-2] and (close_prices[-3] > ema_fast[-3] and close_prices[-2] < ema_fast[-2] or close_prices[-3] > ema_mid[-3] and close_prices[-2] < ema_mid[-2]))
+        buy = (ema_slow[-2] < ema_mid[-2] < ema_fast[-2] and (
+                close_prices[-3] < ema_fast[-3] and close_prices[-2] > ema_fast[-2] or close_prices[-3] < ema_mid[
+            -3] and close_prices[-2] > ema_mid[-2]))
+        sell = (ema_fast[-2] < ema_mid[-2] < ema_slow[-2] and (
+                close_prices[-3] > ema_fast[-3] and close_prices[-2] < ema_fast[-2] or close_prices[-3] > ema_mid[
+            -3] and close_prices[-2] < ema_mid[-2]))
 
         return buy, sell
 
@@ -1322,17 +1475,12 @@ class Strategy:
         # Y el cierre actual es mayor que la apertura previa, entonces es True
         bullishEngulfing = ((openBarCurrent <= closeBarPrevious) and (openBarCurrent < openBarPrevious) and
                             (closeBarCurrent > openBarPrevious))
-        if bullishEngulfing:
-            print(f'Bullish Engulfing for {self.contract.symbol}')
 
         # Si la apertura actual es mayor o igual al cierre previo Y la apertura actual es mayor que la apertura previa Y el cierre actual es menor que la apertura previa, entonces es True
         bearishEngulfing = ((openBarCurrent >= closeBarPrevious) and (openBarCurrent > openBarPrevious) and
                             (closeBarCurrent < openBarPrevious))
-        if bearishEngulfing:
-            print(f'Bearish Engulfing for {self.contract.symbol}')
 
         return bullishEngulfing, bearishEngulfing
-
 
     def rsi_kiss(self, close_prices: np.ndarray):
         period = 14
@@ -1396,8 +1544,87 @@ class TechnicalStrategy(Strategy):
 
         self._long_enable = other_params['long_enable']
         self._short_enable = other_params['short_enable']
-        self._ut_key_value = other_params['ut_key_value']
-        self._ut_atr_period = other_params['ut_atr_period']
+        self._factor_long = other_params['factor_long']
+        self._factor_short = other_params['factor_short']
+
+    def _ema_separation_strat(self, df: pd.DataFrame):
+        df['ema9'] = talib.EMA(df['Close'], timeperiod=9)
+        df['ema20'] = talib.EMA(df['Close'], timeperiod=20)
+        df['ema50'] = talib.EMA(df['Close'], timeperiod=50)
+        df['ema100'] = talib.EMA(df['Close'], timeperiod=100)
+        df['ema200'] = talib.EMA(df['Close'], timeperiod=200)
+
+        # Long diffs
+        df['diff_20_9'] = df['ema20'] - df['ema9']
+        df['diff_50_20'] = df['ema50'] - df['ema20']
+        df['diff_100_50'] = df['ema100'] - df['ema50']
+        df['diff_200_100'] = df['ema200'] - df['ema100']
+
+        # Max diffs for longs
+        df['max_diff_20_9'] = df['diff_20_9'].rolling(window=self._periods_to_check).max()
+        df['max_diff_50_20'] = df['diff_50_20'].rolling(window=self._periods_to_check).max()
+        df['max_diff_100_50'] = df['diff_100_50'].rolling(window=self._periods_to_check).max()
+        df['max_diff_200_100'] = df['diff_200_100'].rolling(window=self._periods_to_check).max()
+
+
+        lsma_relative_volume = self.linear_reg_series(df['Volume'], self._lsma_length, 0)
+        volume_above_sma = df['Volume'].iloc[-2] > lsma_relative_volume[-2] > 0
+        buy_one = (df['diff_20_9'].iloc[-2] == df['max_diff_20_9'].iloc[-2])
+        buy_two = (df['diff_50_20'].iloc[-2] == df['max_diff_50_20'].iloc[-2])
+        buy_three = (df['diff_100_50'].iloc[-2] == df['max_diff_100_50'].iloc[-2])
+        buy_four = (df['diff_200_100'].iloc[-2] == df['max_diff_200_100'].iloc[-2])
+        if buy_one:
+            print(self.contract.symbol)
+            print('Buy one')
+        if buy_two:
+            print(self.contract.symbol)
+            print('Buy two')
+        if buy_three:
+            print(self.contract.symbol)
+            print('Buy three')
+        if buy_four:
+            print(self.contract.symbol)
+            print('Buy four')
+
+        buyCondition = (buy_one and buy_two and buy_three and buy_four and
+                        df['ema200'].iloc[-2] > df['ema100'].iloc[-2] > df['ema50'].iloc[-2] > df['ema20'].iloc[-2] >
+                        df['ema9'].iloc[-2] and volume_above_sma)
+
+        # Short diffs
+        df['diff_9_20'] = df['ema9'] - df['ema20']
+        df['diff_20_50'] = df['ema20'] - df['ema50']
+        df['diff_50_100'] = df['ema50'] - df['ema100']
+        df['diff_100_200'] = df['ema100'] - df['ema200']
+
+        # Max diffs for longs
+        df['max_diff_9_20'] = df['diff_9_20'].rolling(window=self._periods_to_check).max()
+        df['max_diff_20_50'] = df['diff_20_50'].rolling(window=self._periods_to_check).max()
+        df['max_diff_50_100'] = df['diff_50_100'].rolling(window=self._periods_to_check).max()
+        df['max_diff_100_200'] = df['diff_100_200'].rolling(window=self._periods_to_check).max()
+
+        sell_one = (df['diff_9_20'].iloc[-2] == df['max_diff_9_20'].iloc[-2])
+        sell_two = (df['diff_20_50'].iloc[-2] == df['max_diff_20_50'].iloc[-2])
+        sell_three = (df['diff_50_100'].iloc[-2] == df['max_diff_50_100'].iloc[-2])
+        sell_four = (df['diff_100_200'].iloc[-2] == df['max_diff_100_200'].iloc[-2])
+        if sell_one:
+            print(self.contract.symbol)
+            print('Sell one')
+        if sell_two:
+            print(self.contract.symbol)
+            print('Sell two')
+        if sell_three:
+            print(self.contract.symbol)
+            print('Sell three')
+        if sell_four:
+            print(self.contract.symbol)
+            print('Sell four')
+
+        sellCondition = (sell_one and sell_two and
+                         sell_three and sell_four and
+                         df['ema200'].iloc[-2] < df['ema100'].iloc[-2] < df['ema50'].iloc[-2] < df['ema20'].iloc[-2] <
+                         df['ema9'].iloc[-2] and volume_above_sma)
+
+        return buyCondition, sellCondition
 
     def _check_signal(self):
 
@@ -1412,56 +1639,55 @@ class TechnicalStrategy(Strategy):
             opens = []
             lows = []
             highs = []
+            volume = []
             for candle in candles:
                 closes.append(candle.close)
                 opens.append(candle.open)
                 lows.append(candle.low)
                 highs.append(candle.high)
+                volume.append(candle.volume)
 
             close_arr = np.array(closes)
+            open_arr = np.array(closes)
             low_arr = np.array(lows)
             high_arr = np.array(highs)
-            data = pd.DataFrame({'Close': close_arr, 'Low': low_arr, 'High': high_arr})
+            volume_arr = np.array(volume)
+            data = pd.DataFrame({
+                'Open': open_arr,
+                'Close': close_arr,
+                'Low': low_arr,
+                'High': high_arr,
+                'Volume': volume_arr,
+            })
 
-            _, slope = self.get_slope(close_arr, 300)
+            long_condition, sell_condition = self.szmom_adx_strat(data, self._factor_long, self._factor_short)
 
-            buy_heikin, sell_heikin, last_candle_type = self.heikin_ashi_strat(opens, highs, lows, closes, slope)
+            log_message = (f"TechnicalStrategy for {self.contract.symbol}\n ")
 
-            atr_volatity, last_atr = self.get_atr(data)
+            return_long = 1 if self._long_enable == 1 else 0
+            return_short = -1 if self._short_enable == 1 else 0
 
-            last_candle_close = closes[-1]
-
-            long1 = buy_heikin
-            short1 = sell_heikin
-
-            take_profit_factor = 3
-            stop_loss_factor = 1.8
-
-            self.take_profit_long = last_candle_close + (take_profit_factor * last_atr)
-            self.stop_loss_long = last_candle_close - (stop_loss_factor * last_atr)
-
-            self.take_profit_short = last_candle_close - (take_profit_factor * last_atr)
-            self.stop_loss_short = last_candle_close + (stop_loss_factor * last_atr)
-
-            log_message = (f"TechnicalStrategy for {self.contract.symbol}\n "
-                           f"last_candle_type {last_candle_type} \n "
-                           f"Last close {last_candle_close} \n ")
-
-            buy_message = f"{log_message} self.stop_loss_long {self.stop_loss_long} \n take_profit_long {self.take_profit_long}"
-            sell_message = f"{log_message} self.stop_loss_short {self.stop_loss_short} \n take_profit_short {self.take_profit_short}"
-
-            # return_long = 1 if self._long_enable == 1 else 0
-            # return_short = -1 if self._short_enable == 1 else 0
-
-            if long1:
-                logger.info("Long1 " + buy_message)
-                return 0
-            elif short1:
-                logger.info("Short1 " + sell_message)
-                return 0
+            if long_condition:
+                logger.info("Long " + log_message)
+                toaster = Notification(app_id="New order on Binance Long",
+                                       title=f"{self.contract.symbol} Long",
+                                       duration=f"long",
+                                       icon=ICON_LONG)
+                toaster.set_audio(audio.LoopingAlarm, loop=False)
+                toaster.show()
+                return return_long
+            elif sell_condition:
+                logger.info("Short " + log_message)
+                toaster = Notification(app_id="New order on Binance Short",
+                                       title=f"{self.contract.symbol} Short",
+                                       duration=f"long",
+                                       icon=ICON_SHORT)
+                toaster.set_audio(audio.LoopingAlarm, loop=False)
+                toaster.show()
+                return return_short
 
         except Exception as e:
-            print(f"error signals {e}")
+            print(f"error signals Technical {e}")
             return 0
 
     def check_trade(self, tick_type: str):
@@ -1472,23 +1698,21 @@ class TechnicalStrategy(Strategy):
         :param tick_type: same_candle or new_candle
         :return:
         """
-        if tick_type == "new_candle" and not self.ongoing_position:
-            signal_result = self._check_signal()
-            # signal_result = 0
+        # if tick_type == "new_candle" and not self.ongoing_position:
+        #     signal_result = self._check_signal()
+        #     if signal_result in [1, -1]:
+        #         self._open_position(signal_result)
+        if tick_type == "new_candle" and self.verified and not self.ongoing_position:
+                signal_result = self._check_signal()
+                # if True:
+                if not self.on_new_york_session() or self.today_is_sunday():
+                    signal_result = 0
+                if signal_result in [1, -1]:
+                    self._open_position(signal_result)
 
-            if signal_result in [1, -1]:
-                self._open_position(signal_result)
+        if not self.verified:
+            self.calculate_gap_up_percentage()
 
-    # def get_last_volume_color(self):
-    #     exchange = ccxt.binance()
-    #     volume_historic = exchange.fetch_ohlcv(self.contract.symbol, self.tf)
-    #     v_open = volume_historic[-1][1]
-    #     v_close = volume_historic[-1][4]
-    #
-    #     if v_close > v_open:
-    #         return "green"
-    #     else:
-    #         return "red"
 
 
 class BreakoutStrategy(Strategy):
@@ -1503,13 +1727,7 @@ class BreakoutStrategy(Strategy):
         self._short_enable = other_params['short_enable']
         self._regression_length_long = other_params['regression_length_long']
         self._regression_length_short = other_params['regression_length_short']
-        self._regression_length_triple_ema = other_params['_regression_length_triple_ema']
-        # self._ut_key_value = other_params['ut_key_value']
-        # self._ut_atr_period = other_params['ut_atr_period']
-        # self._test_mode = other_params['test_mode']
-        # self._ut_key_value_parent = 3
-        # self._ut_atr_period_parent = self._ut_atr_period
-        # self._heikin_ashi = other_params['heikin_ashi']
+
 
     def _check_signal(self):
 
@@ -1538,7 +1756,7 @@ class BreakoutStrategy(Strategy):
             formatted_timestamps = [timestamp.strftime("%Y-%m-%d %H:%M:%S") for timestamp in timestamps_datetime]
 
             close_arr = np.array(closes)
-            open_arr = np.array(closes)
+            open_arr = np.array(opens)
             low_arr = np.array(lows)
             high_arr = np.array(highs)
             volume_arr = np.array(volume)
@@ -1552,45 +1770,28 @@ class BreakoutStrategy(Strategy):
                 'date': timestamp_arr
             })
             zone, resistance_limit, support_limit, max_limit, min_limit = self.session_zones(data)
-            cumulative_period = 0
-            match self.tf:
-                case "1m": cumulative_period = 110
-                case "5m": cumulative_period = 80
-                case "15m": cumulative_period = 60
-                case "30m": cumulative_period = 60
-                case "1h": cumulative_period = 30
-                case "4h": cumulative_period = 30
+            cumulative_period = 110
+
 
             vwap_asc_long, vwap_desc_long, vwap_value_long = self._vwap(data, cumulative_period)
 
-            vwap_asc_short, vwap_desc_short, vwap_value_short = self._vwap(data, 34)
-
-            green_win, red_win, green_count, red_count = self.green_vs_red(opens, closes)
-
-            # Volume LSMA
-            volume_length = 24 if self.tf == "1m" else 60
-            lsma_relative_volume = self.linear_reg_series(data['Volume'], volume_length, 0)
-            volume_above_sma = data['Volume'].iloc[-2] > lsma_relative_volume[-2] > 0
-
-            vol_sma_asc = lsma_relative_volume[-5] < lsma_relative_volume[-4] < lsma_relative_volume[-3] < lsma_relative_volume[-2]
-            vol_sma_desc = lsma_relative_volume[-2] < lsma_relative_volume[-3] < lsma_relative_volume[-4] < lsma_relative_volume[-5]
-
-            volume_asc = data['Volume'].iloc[-3] < data['Volume'].iloc[-2]
-            volume_desc = data['Volume'].iloc[-3] > data['Volume'].iloc[-2]
+            # self.squeeze_momentum(data)
+            # self.calculate_squeeze(data)
 
             # Tripe Ema
-            buy_tiple_ema, sell_triple_ema = self.triple_ema_fibonashi(close_arr, 48, 60, 190)
+            fast = 16
+            mid = 64
+            slow = 100
+
+            ema_fast = talib.EMA(close_arr, timeperiod=fast)
+            ema_mid = talib.EMA(close_arr, timeperiod=mid)
+            ema_slow = talib.EMA(close_arr, timeperiod=slow)
 
             # Engunlfing candles
             bullish_engulfing, bearish_engulfing = self.engulfing_candles(closes, opens)
 
             # Stochastic
-            k, d = self._stochastich(high_arr, low_arr, close_arr)
-
-            last_candle_close = closes[-1]
-            sma = talib.SMA(close_arr, timeperiod=30)
-            sma_rising = sma[-3] < sma[-2]
-            sma_falling = sma[-3] > sma[-2]
+            k, d = self._stochastich(high_arr, low_arr, close_arr, self._k_length, self._k_smoothing)
 
 
             _, slope_triple_ema_d, trend_triple_ema = self.get_slope(close_arr, self._regression_length_triple_ema)
@@ -1598,46 +1799,20 @@ class BreakoutStrategy(Strategy):
             _, slope_long, trend_35 = self.get_slope(close_arr, self._regression_length_long)
             _, slope_short, trend_35 = self.get_slope(close_arr, self._regression_length_short)
 
-            crosses_vwap_up = opens[-2] < vwap_value_long < closes[-2]
-            crosses_vwap_down = opens[-2] > vwap_value_long > closes[-2]
-
-            # crosses_vwap_up_20 = opens[-2] < vwap_value_short < closes[-2]
-            # crosses_vwap_down_20 = opens[-2] > vwap_value_short > closes[-2]
-
             # Long
-            long16 = (zone != "BrokeResistance" and vwap_asc_long and green_win and crosses_vwap_up and
-                      slope_180 > 0 < slope_long and volume_above_sma and sma_rising)
-
-            long17 = (zone != "BrokeResistance" and buy_tiple_ema and trend_triple_ema == STRONG_BULLISH
-                      and green_win and sma_rising)
-
-            # Short
-            short11 = (zone != "BrokeSupport" and vol_sma_desc and last_candle_close < vwap_value_long and
-                       bearish_engulfing and vwap_desc_long and slope_short < 0 and sma_falling)
-
-            short16 = (zone != "BrokeSupport" and vwap_desc_long and red_win and crosses_vwap_down and
-                       slope_180 < 0 > slope_short and sma_falling)
-
-            short17 = (zone != "BrokeSupport" and sell_triple_ema and trend_triple_ema == STRONG_BEARISH and
-                       red_win and sma_falling)
-
-            self.take_profit_long = max_limit
-            self.stop_loss_long = last_candle_close - ((self.take_profit_long - last_candle_close) * 0.85)
-
-            self.take_profit_short = min_limit
-            self.stop_loss_short = last_candle_close + ((last_candle_close - self.take_profit_short) * 0.85)
+            long15 = (ema_slow[-1] < ema_mid[-1] < ema_fast[-1] and bullish_engulfing and k < 30)
+            short15 = (ema_slow[-1] > ema_mid[-1] > ema_fast[-1] and bearish_engulfing and k > 80)
 
             # @todo crear un probador de estrategias con los datos historicos de peridos especificos
             log_message = (f"Breakout for {self.contract.symbol} {self.tf}\n "
                            f"bearish_engulfing {bearish_engulfing} \n "
                            f"bullish_engulfing {bullish_engulfing} \n "
-                           f"candle green wins {green_win} \n "
-                           f"candle green_count {green_count} \n "
-                           f"candle red wins {red_win} \n "
-                           f"candle red_count {red_count} \n "
+                           # f"candle green wins {green_win} \n "
+                           # f"candle green_count {green_count} \n "
+                           # f"candle red wins {red_win} \n "
+                           # f"candle red_count {red_count} \n "
                            f"vwap period {cumulative_period} \n "
                            f"vwap period {cumulative_period} \n "
-                           f"Entry price {last_candle_close} \n "
                            f"max_limit {max_limit} \n "
                            f"resistance_limit {resistance_limit} \n "
                            f"support_limit {support_limit} \n "
@@ -1645,8 +1820,8 @@ class BreakoutStrategy(Strategy):
                            f"slope_35_d {slope_short} \n "
                            f"trend_35 {trend_35} \n "
                            f"slope_120 {slope_triple_ema_d} \n "
-                           f"sma_falling {sma_falling} \n "
-                           f"sma_rising {sma_rising} \n "
+                           # f"sma_falling {sma_falling} \n "
+                           # f"sma_rising {sma_rising} \n "
                            f"trend_triple_ema {trend_triple_ema} \n "
                            f"slope_180_d {slope_180} \n "
                            f"Stochastic k {k} \n "
@@ -1657,15 +1832,15 @@ class BreakoutStrategy(Strategy):
                            f"trend_180 {trend_180} \n "
                            f"timeframe {self.tf} \n "
                            f"vwap_value {vwap_value_long} \n "
-                           f"vwap_asc_20 {vwap_asc_short} \n "
-                           f"vwap_desc_20 {vwap_desc_short} \n "
+                           # f"vwap_asc_20 {vwap_asc_short} \n "
+                           # f"vwap_desc_20 {vwap_desc_short} \n "
                            f"vwap_asc {vwap_asc_long} \n "
                            f"vwap_desc {vwap_desc_long} \n "
-                           f"volume_asc {volume_asc} \n "
-                           f"volume_desc {volume_desc} \n "
-                           f"volume_above_sma {volume_above_sma} \n "
-                           f"vol_sma_asc {vol_sma_asc} \n "
-                           f"vol_sma_desc {vol_sma_desc} \n "
+                           # f"volume_asc {volume_asc} \n "
+                           # f"volume_desc {volume_desc} \n "
+                           # f"volume_above_sma {volume_above_sma} \n "
+                           # f"vol_sma_asc {vol_sma_asc} \n "
+                           # f"vol_sma_desc {vol_sma_desc} \n "
                            f"zone {zone} \n")
             sl_tp_long_message = f"self.stop_loss_long {self.stop_loss_long}\n take_profit_long {self.take_profit_long}"
             sl_tp_short_message = f"self.stop_loss_short {self.stop_loss_short}\n take_profit_short {self.take_profit_short}"
@@ -1675,58 +1850,26 @@ class BreakoutStrategy(Strategy):
             return_long = 1 if self._long_enable == 1 else 0
             return_short = -1 if self._short_enable == 1 else 0
 
-            if short11:
-                logger.info("Short11 " + sell_message)
-                toaster = Notification(app_id="New order on Binance Short11",
-                                       title=f"{self.contract.symbol} Short11",
-                                       msg=f"{sl_tp_short_message}",
-                                       duration=f"long",
-                                       icon=ICON_SHORT)
-                toaster.set_audio(audio.LoopingAlarm, loop=False)
-                toaster.show()
-                return return_short
-            elif long16:
-                logger.info("long16 " + buy_message)
-                toaster = Notification(app_id="New order on Binance Long16",
-                                       title=f"{self.contract.symbol} Long16",
+            if long15:
+                logger.info("long15 " + buy_message)
+                toaster = Notification(app_id="New order on Binance Long15",
+                                       title=f"{self.contract.symbol} Long15",
                                        msg=f"{sl_tp_long_message}",
                                        duration=f"long",
                                        icon=ICON_LONG)
                 toaster.set_audio(audio.LoopingAlarm, loop=False)
                 toaster.show()
                 return return_long
-            elif short16:
-                logger.info("Short16 " + sell_message)
-                toaster = Notification(app_id="New order on Binance Short16",
-                                       title=f"{self.contract.symbol} Short16",
+            elif short15:
+                logger.info("Short15 " + sell_message)
+                toaster = Notification(app_id="New order on Binance Short15",
+                                       title=f"{self.contract.symbol} Short15",
                                        msg=f"{sl_tp_short_message}",
                                        duration=f"long",
                                        icon=ICON_SHORT)
                 toaster.set_audio(audio.LoopingAlarm, loop=False)
                 toaster.show()
                 return return_short
-                
-            elif long17:
-                logger.info("long17 " + buy_message)
-                toaster = Notification(app_id="New order on Binance Long17",
-                                       title=f"{self.contract.symbol} Long17",
-                                       msg=f"{sl_tp_long_message}",
-                                       duration=f"long",
-                                       icon=ICON_LONG)
-                toaster.set_audio(audio.LoopingAlarm, loop=False)
-                toaster.show()
-                return return_long
-            elif short17:
-                logger.info("Short17 " + sell_message)
-                toaster = Notification(app_id="New order on Binance Short17",
-                                       title=f"{self.contract.symbol} Short17",
-                                       msg=f"{sl_tp_short_message}",
-                                       duration=f"long",
-                                       icon=ICON_SHORT)
-                toaster.set_audio(audio.LoopingAlarm, loop=False)
-                toaster.show()
-                return return_short
-
             else:
                 return 0
 
@@ -1747,8 +1890,8 @@ class BreakoutStrategy(Strategy):
                 if not self.ongoing_position:
                     signal_result = self._check_signal()
                     # if True:
-                    # if not self.on_new_york_session() or self.today_is_sunday():
-                    #    signal_result = 0
+                    if not self.on_new_york_session() or self.today_is_sunday():
+                        signal_result = 0
                     if signal_result in [1, -1]:
                         self._open_position(signal_result)
                 else:
@@ -1760,6 +1903,8 @@ class BreakoutStrategy(Strategy):
                                     self.position_quantity = float(position['positionAmt'])
                                     break
             if not self.verified:
+                if self.contract.symbol == "BTCUSDT":
+                    self.client.check_market()
                 self.calculate_gap_up_percentage()
         except Exception as e:
             print(f"error check_trade {e}")

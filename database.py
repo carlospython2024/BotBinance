@@ -11,6 +11,7 @@ class WorkspaceData:
         self.cursor.execute("CREATE TABLE IF NOT EXISTS watchlist (symbol TEXT, exchange TEXT)")
         self.cursor.execute("CREATE TABLE IF NOT EXISTS strategies (strategy_type TEXT, contract TEXT,"
                             "timeframe TEXT, balance_pct REAL, take_profit REAL, stop_loss REAL, extra_params TEXT)")
+        self.cursor.execute("CREATE TABLE IF NOT EXISTS btc_dominance (dominance_date TEXT, percentage TEXT)")
 
         self.conn.commit()  # Saves the changes
 

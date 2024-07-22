@@ -77,6 +77,7 @@ class Contract:
             self.base_asset = contract_info['baseAsset']
             self.quote_asset = contract_info['quoteAsset']
             self.price_decimals = contract_info['pricePrecision']
+            self.delivery_date = contract_info['deliveryDate']
             self.quantity_decimals = contract_info['quantityPrecision']
             self.tick_size = 1 / pow(10, contract_info['pricePrecision'])
             self.lot_size = 1 / pow(10, contract_info['quantityPrecision'])

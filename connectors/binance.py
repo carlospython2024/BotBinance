@@ -4,10 +4,9 @@ import time
 import typing
 import collections
 import smtplib
-import winsound
 import pandas as pd
 from urllib.parse import urlencode
-from datetime import datetime
+# from datetime import datetime, timedelta
 
 import hmac
 import hashlib
@@ -17,6 +16,7 @@ import json
 
 import threading
 
+from database import WorkspaceData
 from models import *
 from strategies import TechnicalStrategy, BreakoutStrategy
 
@@ -44,7 +44,6 @@ class BinanceClient:
         """
 
         self.futures = futures
-
         if self.futures:
             self.platform = "binance_futures"
             if testnet:
@@ -80,6 +79,7 @@ class BinanceClient:
         self.reconnect = True
         self.ws_connected = False
         self.ws_subscriptions = {"bookTicker": [], "aggTrade": []}
+        self.db = WorkspaceData()
 
         t = threading.Thread(target=self._start_ws)
         t.start()
@@ -182,7 +182,7 @@ class BinanceClient:
         data = dict()
         data['symbol'] = contract.symbol
         data['interval'] = interval
-        data['limit'] = 500  # The maximum number of candles is 1000 on Binance Spot
+        data['limit'] = 1000  # The maximum number of candles is 1000 on Binance Spot
 
         if self.futures:
             raw_candles = self._make_request("GET", "/fapi/v1/klines", data)
@@ -690,6 +690,80 @@ class BinanceClient:
         else:
             print("No se pudieron obtener los datos históricos de Finhub. Verifica el símbolo del activo y la clave de API.")
             return None
+
+    # Función para obtener la dominancia del Bitcoin
+    def obtener_dominancia_bitcoin(self):
+        url = "https://api.coingecko.com/api/v3/global"
+        response = requests.get(url)
+        data = response.json()
+        bitcoin_market_cap = data['data']['market_cap_percentage']['btc']
+        return bitcoin_market_cap
+
+    # Función para obtener el precio del Bitcoin
+    def obtener_precio_bitcoin(self):
+        data = self.get_day_data("BTCUSDT")
+        precio_actual = data['Close'].iloc[-1]
+        precio_anterior = data['Close'].iloc[-2]
+        return precio_actual, precio_anterior
+
+    # Lógica para determinar el comportamiento esperado de los altcoins
+    def determinar_comportamiento_altcoins(self, dominancia_actual, dominancia_anterior, precio_actual, precio_anterior):
+        dominancia_subiendo = dominancia_actual > dominancia_anterior
+        precio_subiendo = precio_actual > precio_anterior
+        precio_bajando = precio_actual < precio_anterior
+        precio_lateral = precio_actual == precio_anterior
+
+        message = (f"Precio actual: {precio_actual:.2f}\n"
+                   f"Precio anterior: {precio_anterior:.2f}\n"
+                   f"Dominancia actual: {dominancia_actual:.2f}\n"
+                   f"Dominancia anterior: {dominancia_anterior:.2f}\n")
+
+        if dominancia_subiendo:
+            if precio_subiendo:
+                return f"La dominancia del Bitcoin esta subiendo y el precio subiendo, se espera que el precio de los altcoins baje. \n{message}"
+            elif precio_bajando:
+                return f"La dominancia del Bitcoin esta subiendo y el precio bajando, se espera que el precio de los altcoins baje rápidamente.\n{message}"
+            elif precio_lateral:
+                return f"La dominancia del Bitcoin esta subiendo y el precio lateralizando, se espera que el precio de los altcoins se estanque.\n{message}"
+        else:
+            if precio_subiendo:
+                return f"La dominancia del Bitcoin no sube y el precio aumenta, se espera que el precio de los altcoins suba rápidamente.\n{message}"
+            elif precio_bajando:
+                return f"La dominancia del Bitcoin no sube y el precio disminuye, se espera que el precio de los altcoins se estanque.\n{message}"
+            elif precio_lateral:
+                return f"La dominancia del Bitcoin no sube y el precio se estanca, se espera que el precio de los altcoins suba.\n{message}"
+
+    def check_market(self):
+        print("Dominance del Bitcoin:")
+        dominancia_actual = self.obtener_dominancia_bitcoin()
+        # self.db.save('btc_dominance', [dominancia_actual])
+
+        dominancia_anterior = self.obtener_dominancia_bitcoin()  #@todo En una implementación real, deberías almacenar y comparar con valores históricos.
+        precio_actual, precio_anterior = self.obtener_precio_bitcoin()
+        self.obtener_indice_miedo_codicia()
+
+        # Determinar y mostrar el comportamiento esperado de los altcoins
+        comportamiento_altcoins = self.determinar_comportamiento_altcoins(dominancia_actual, dominancia_anterior,
+                                                                     precio_actual, precio_anterior)
+        print(comportamiento_altcoins)
+
+    import requests
+
+    def obtener_indice_miedo_codicia(self):
+        url = 'https://api.alternative.me/fng/'
+        response = requests.get(url)
+        if response.status_code == 200:
+            data = response.json()
+            indice = data
+            if indice:
+                print("Índice de miedo y codicia:")
+                for item in indice['data']:
+                    print(f"Valor: {item['value']}, Sentimiento: {item['value_classification']}")
+            else:
+                print("No se pudo obtener el índice de miedo y codicia.")
+        else:
+            return None
+
 
     def send_email(self, subject, message):
         with smtplib.SMTP("smtp.gmail.com") as connection:
