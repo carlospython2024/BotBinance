@@ -275,7 +275,7 @@ class Strategy:
         data = pd.DataFrame(
             {'Close': close_arr, 'Low': low_arr, 'High': high_arr, 'Volume': volume_arr})
 
-        vwap_asc, vwap_desc, _ = self._vwap_reg(data, 10, 8)
+        vwap_asc, vwap_desc, _ = self._vwap_reg(data, 20, 10)
         if trade.side == "long":
             if price >= trade.entry_price * (1 + 1 / 100):
                 tp_triggered = True
@@ -1181,7 +1181,7 @@ class Strategy:
         highest_high = self.highest(df['High'], lookback_factor_long)
         max_resistance = self.highest(df['Close'], lookback_factor_long)
         # lowestLowClose = self.lowest(df['Close'], lookback_factor_short)
-        # lowest_low = self.lowest(df['Low'], lookback_factor_short)
+        lowest_low = self.lowest(df['Low'], lookback_factor_short)
         max_support = self.lowest(df['Close'], lookback_factor_short)
 
         # Calcular SMA de los valores máximos y mínimos
@@ -1212,13 +1212,13 @@ class Strategy:
         # Añadir los resultados al DataFrame (opcional)
         # df['resistanceMa'] = resistance_ma
         df['maxResistance'] = max_resistance
-        # df['highestHigh'] = highest_high
+        df['highestHigh'] = highest_high
         # df['highestMa'] = highestMa
         # df['midPoint'] = midPoint
 
         df['maxSupport'] = max_support
         # df['lowestMa'] = lowest_ma
-        # df['lowestLow'] = lowest_low
+        df['lowestLow'] = lowest_low
         # df['supportMa'] = support_ma
 
         # Mostrar el DataFrame (opcional)
@@ -1281,7 +1281,7 @@ class Strategy:
         result = series.iloc[-2] < series.iloc[-3]
         return result
 
-    def szmom_adx_strat(self, data, factor_long, factor_short):
+    def sqzmom_strat(self, data, factor_long, factor_short):
         sqz_df = self.squeeze_momentum(data)
         df = self.get_closest_distances(sqz_df, factor_long, factor_short)
         # previous_are_black = True
@@ -1297,10 +1297,11 @@ class Strategy:
         # print(f"df['scolor'].iloc[-2] : {df['scolor'].iloc[-2]}")
         # print(f"self.falling(df['maxSupport']) : {self.falling(df['maxSupport'])}")
 
-        long = (df['bcolor'].iloc[-2] == "bright_green" and self.rising(df['histogram']) and
-                df['scolor'].iloc[-2] == 'gray' and self.rising(df['maxResistance'])) and df['Close'].iloc[-2] > df['Open'].iloc[-2]
+        long = ((df['bcolor'].iloc[-2] == "bright_green" and self.rising(df['histogram']) and
+                df['scolor'].iloc[-2] == 'gray' and (self.rising(df['maxResistance'])) or self.rising(df['highestHigh']))
+                and df['Close'].iloc[-2] > df['Open'].iloc[-2])
         short = (df['bcolor'].iloc[-2] == "bright_red" and self.falling(df['histogram']) and
-                 df['scolor'].iloc[-2] == 'gray' and self.falling(df['maxSupport']))
+                 df['scolor'].iloc[-2] == 'gray' and (self.falling(df['maxSupport']) or self.falling(df['lowestLow'])))
 
         return long, short
 
@@ -1515,8 +1516,8 @@ class Strategy:
 
         reg_vwap = self.linear_reg_series(df['vwapValue'], reg_period, 0)
 
-        vwap_asc = reg_vwap[-3] < reg_vwap[-2] < reg_vwap[-1]
-        vwap_desc = reg_vwap[-3] > reg_vwap[-2] > reg_vwap[-1]
+        vwap_asc = reg_vwap[-3] < reg_vwap[-2]
+        vwap_desc = reg_vwap[-3] > reg_vwap[-2]
 
         return vwap_asc, vwap_desc, df['vwapValue'].values[-1]
 
@@ -1660,7 +1661,7 @@ class TechnicalStrategy(Strategy):
                 'Volume': volume_arr,
             })
 
-            long_condition, sell_condition = self.szmom_adx_strat(data, self._factor_long, self._factor_short)
+            long_condition, sell_condition = self.sqzmom_strat(data, self._factor_long, self._factor_short)
 
             log_message = (f"TechnicalStrategy for {self.contract.symbol}\n ")
 
